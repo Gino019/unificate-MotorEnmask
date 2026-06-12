@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecOps Universal - Multi-DB Masking</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; }
+        .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 1rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+        .hidden { display: none !important; }
+        .tab-active { background-color: #0ea5e9; color: white; border-color: #38bdf8; }
+        .tab-inactive { background-color: #1e293b; color: #94a3b8; border-color: #334155; }
+    </style>
+</head>
+<body class="min-h-screen p-6">
+    <!-- Navbar -->
+    <nav class="flex justify-between items-center mb-4 glass-panel p-4">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 bg-cyan-500 rounded-lg flex items-center justify-center font-bold text-xl">S</div>
+            <h1 class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500">
+                SecOps Universal Monitor
+            </h1>
+        </div>
+        <button onclick="logout()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors text-sm font-medium">
+            Cerrar Sesión
+        </button>
+    </nav>
+
+    <!-- Context Bar (Tabs) -->
+    <div class="mb-6 flex space-x-2 overflow-x-auto pb-2" id="tabs-container">
+        <!-- Tabs dinámicos -->
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- PANEL IZQUIERDO: CONTROLES -->
+        <div class="lg:col-span-4 space-y-6">
+            
+            <!-- FORMULARIO DE CONEXIÓN (Múltiples) -->
+            <div id="view-connect" class="glass-panel p-6">
+                <h2 class="text-xl font-bold mb-4 flex items-center"><span class="bg-blue-500 text-xs rounded-full w-6 h-6 flex items-center justify-center mr-2">+</span> Nueva Conexión</h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-1">Alias (Para identificarla)</label>
+                        <input type="text" id="conn-alias" placeholder="Ej: MySQL Producción" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-cyan-500">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-1">Motor</label>
+                        <select id="conn-motor" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-cyan-500 outline-none" onchange="toggleFormFields()">
+                            <option value="sqlite">SQLite (Local DB)</option>
+                            <option value="postgres">PostgreSQL</option>
+                            <option value="mysql">MySQL</option>
+                            <option value="sqlserver">SQL Server</option>
+                            <option value="mongodb">MongoDB</option>
+                            <option value="redis">Redis</option>
+                            <option value="neo4j">Neo4j</option>
+                        </select>
+                    </div>
+
+                    <!-- Campos dinámicos -->
+                    <div id="field-host" class="hidden">
+                        <label class="block text-sm text-slate-400 mb-1">Host / URI</label>
+                        <input type="text" id="conn-host" placeholder="localhost" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 outline-none">
+                    </div>
+                    
+                    <div id="field-port" class="hidden">
+                        <label class="block text-sm text-slate-400 mb-1">Puerto</label>
+                        <input type="number" id="conn-port" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 outline-none">
+                    </div>
+                    
+                    <div id="field-credentials" class="hidden space-y-4">
+                        <div>
+                            <label class="block text-sm text-slate-400 mb-1">Usuario</label>
+                            <input type="text" id="conn-user" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-sm text-slate-400 mb-1">Contraseña</label>
+                            <input type="password" id="conn-pass" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 outline-none">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-1">Nombre Base de Datos</label>
+                        <input type="text" id="conn-db" placeholder="Opcional en Redis/Neo4j" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 outline-none">
+                    </div>
+
+                    <button onclick="conectarDB()" id="btn-connect" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded-lg transition-colors mt-2">
+                        Conectar e Introspeccionar
+                    </button>
+                    <p id="connect-status" class="text-sm mt-2 text-center"></p>
+                </div>
+            </div>
+
+            <!-- VISTA DE REGLAS DE ENMASCARAMIENTO (Depende del contexto activo) -->
+            <div id="view-rules" class="glass-panel p-6 hidden">
+                <h2 class="text-xl font-bold mb-4 flex items-center text-cyan-400" id="rules-title">Reglas de Enmascaramiento</h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-1">Seleccionar Tabla/Colección</label>
+                        <select id="rule-table" onchange="cargarColumnas()" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 outline-none">
+                            <option value="">-- Selecciona --</option>
+                        </select>
+                    </div>
+
+                    <div class="border border-slate-700 rounded-lg p-3 bg-slate-800/50">
+                        <h3 class="text-sm font-semibold text-slate-300 mb-2">Construir Reglas</h3>
+                        <div id="rules-container" class="space-y-2 mb-3">
+                            <!-- Filas dinámicas -->
+                        </div>
+                        <button onclick="agregarFilaRegla()" class="text-sm text-cyan-400 hover:text-cyan-300 flex items-center">
+                            + Añadir columna protegida
+                        </button>
+                    </div>
+
+                    <button onclick="ejecutarPrueba()" id="btn-execute" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-lg transition-colors mt-4 shadow-lg shadow-emerald-500/20">
+                        ▶ Ejecutar Prueba y Medir
+                    </button>
+                    <p id="execute-status" class="text-sm mt-2 text-center"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- PANEL DERECHO: MÉTRICAS Y RESULTADOS -->
+        <div class="lg:col-span-8 space-y-6">
+            <!-- KPIs -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="glass-panel p-6 flex flex-col justify-center items-center">
+                    <p class="text-slate-400 text-sm font-medium">Tiempo Base (DB)</p>
+                    <p id="kpi-db" class="text-3xl font-bold text-blue-400 mt-2">0 ms</p>
+                </div>
+                <div class="glass-panel p-6 flex flex-col justify-center items-center">
+                    <p class="text-slate-400 text-sm font-medium">Overhead Seguridad</p>
+                    <p id="kpi-sec" class="text-3xl font-bold text-amber-400 mt-2">0 ms</p>
+                </div>
+                <div class="glass-panel p-6 flex flex-col justify-center items-center">
+                    <p class="text-slate-400 text-sm font-medium">Latencia Total</p>
+                    <p id="kpi-total" class="text-3xl font-bold text-rose-400 mt-2">0 ms</p>
+                </div>
+            </div>
+
+            <!-- Gráfico y Datos -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[500px]">
+                <div class="glass-panel p-4 flex flex-col">
+                    <h3 class="text-lg font-semibold mb-4 text-slate-200">Impacto en Latencia</h3>
+                    <div class="flex-grow relative w-full h-full">
+                        <canvas id="latencyChart"></canvas>
+                    </div>
+                </div>
+                <div class="glass-panel p-4 flex flex-col">
+                    <h3 class="text-lg font-semibold mb-4 text-slate-200">Vista Previa de Datos (Limit 100)</h3>
+                    <div class="overflow-auto flex-grow bg-slate-900 rounded-lg p-2 border border-slate-700">
+                        <pre id="data-preview" class="text-xs text-slate-300 font-mono"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let schemaCache = {};
+        let myChart = null;
+        let activeConnectionId = null;
+
+        document.addEventListener("DOMContentLoaded", () => {
+            toggleFormFields();
+            initChart();
+            fetchConnections();
+        });
+
+        function toggleFormFields() {
+            const motor = document.getElementById("conn-motor").value;
+            const host = document.getElementById("field-host");
+            const port = document.getElementById("field-port");
+            const creds = document.getElementById("field-credentials");
+
+            if (motor === "sqlite") {
+                host.classList.add("hidden");
+                port.classList.add("hidden");
+                creds.classList.add("hidden");
+                document.getElementById("conn-db").value = "local_monitor.db";
+                document.getElementById("conn-alias").value = "SQLite Local";
+            } else {
+                host.classList.remove("hidden");
+                port.classList.remove("hidden");
+                creds.classList.remove("hidden");
+                document.getElementById("conn-db").value = "";
+                document.getElementById("conn-alias").value = motor.toUpperCase() + " Server";
+                
+                const ports = { "postgres": 5432, "mysql": 3306, "sqlserver": 1433, "mongodb": 27017, "redis": 6379, "neo4j": 7687 };
+                document.getElementById("conn-port").value = ports[motor] || "";
+                if(motor==="mongodb") document.getElementById("conn-host").placeholder = "mongodb://localhost:27017/";
+                else document.getElementById("conn-host").placeholder = "localhost";
+            }
+        }
+
+        async function fetchConnections() {
+            try {
+                const res = await fetch('/api/v1/connections');
+                if (res.ok) {
+                    const data = await res.json();
+                    renderTabs(data.conexiones);
+                } else if(res.status === 401) {
+                    window.location.href = '/login';
+                }
+            } catch (e) {
+                console.error("Error fetching connections", e);
+            }
+        }
+
+        function renderTabs(conexiones) {
+            const container = document.getElementById("tabs-container");
+            container.innerHTML = "";
+
+            // Botón Agregar
+            const btnAdd = document.createElement("button");
+            btnAdd.onclick = () => showConnectForm();
+            btnAdd.className = `px-4 py-2 border rounded-full text-sm font-semibold transition-colors flex items-center whitespace-nowrap ${!activeConnectionId ? 'tab-active' : 'tab-inactive hover:bg-slate-700'}`;
+            btnAdd.innerHTML = `+ Nueva Conexión`;
+            container.appendChild(btnAdd);
+
+            conexiones.forEach(conn => {
+                const tab = document.createElement("div");
+                const isActive = (conn.id === activeConnectionId);
+                tab.className = `px-4 py-2 border rounded-full text-sm font-semibold transition-colors flex items-center space-x-2 whitespace-nowrap cursor-pointer ${isActive ? 'tab-active' : 'tab-inactive hover:bg-slate-700'}`;
+                
+                const label = document.createElement("span");
+                label.innerText = conn.alias || conn.motor;
+                label.onclick = () => selectConnection(conn.id, conn.alias);
+                
+                const btnDel = document.createElement("button");
+                btnDel.innerText = "×";
+                btnDel.className = "text-rose-400 hover:text-rose-200 ml-2 font-bold text-lg leading-none";
+                btnDel.onclick = (e) => {
+                    e.stopPropagation();
+                    deleteConnection(conn.id);
+                };
+
+                tab.appendChild(label);
+                tab.appendChild(btnDel);
+                container.appendChild(tab);
+            });
+        }
+
+        function showConnectForm() {
+            activeConnectionId = null;
+            document.getElementById("view-connect").classList.remove("hidden");
+            document.getElementById("view-rules").classList.add("hidden");
+            limpiarMetricas();
+            fetchConnections(); // Refresca tabs para resaltar "Nueva Conexión"
+        }
+
+        async function selectConnection(conn_id, alias) {
+            activeConnectionId = conn_id;
+            document.getElementById("view-connect").classList.add("hidden");
+            document.getElementById("view-rules").classList.remove("hidden");
+            document.getElementById("rules-title").innerText = `Reglas: ${alias}`;
+            limpiarMetricas();
+            fetchConnections(); // Refresca tabs
+
+            // Traer el esquema del backend para este contexto
+            try {
+                const res = await fetch(`/api/v1/schema?connection_id=${conn_id}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    schemaCache = data.tablas || {};
+                    popularTablas();
+                } else {
+                    document.getElementById("rules-container").innerHTML = "<p class='text-rose-400'>Error cargando esquema.</p>";
+                }
+            } catch (e) {
+                console.error("Error schema", e);
+            }
+        }
+
+        async function deleteConnection(conn_id) {
+            try {
+                await fetch(`/api/v1/connections/${conn_id}`, { method: 'DELETE' });
+                if (activeConnectionId === conn_id) showConnectForm();
+                else fetchConnections();
+            } catch (e) { console.error("Error al borrar", e); }
+        }
+
+        async function conectarDB() {
+            const btn = document.getElementById("btn-connect");
+            const status = document.getElementById("connect-status");
+            btn.innerText = "Conectando...";
+            btn.disabled = true;
+
+            const payload = {
+                motor: document.getElementById("conn-motor").value,
+                alias: document.getElementById("conn-alias").value,
+                credenciales: {
+                    host: document.getElementById("conn-host").value,
+                    port: document.getElementById("conn-port").value,
+                    user: document.getElementById("conn-user").value,
+                    password: document.getElementById("conn-pass").value,
+                    database: document.getElementById("conn-db").value
+                }
+            };
+
+            try {
+                const response = await fetch('/api/v1/connect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    status.innerText = "";
+                    // Auto-seleccionar la nueva conexión
+                    selectConnection(data.connection_id, data.alias);
+                } else {
+                    throw new Error(data.detail);
+                }
+            } catch (error) {
+                status.innerText = "❌ " + error.message;
+                status.classList.add("text-rose-400");
+            } finally {
+                btn.innerText = "Conectar e Introspeccionar";
+                btn.disabled = false;
+            }
+        }
+
+        function popularTablas() {
+            const select = document.getElementById("rule-table");
+            select.innerHTML = '<option value="">-- Selecciona --</option>';
+            for (const tabla in schemaCache) {
+                const opt = document.createElement("option");
+                opt.value = tabla;
+                opt.innerText = tabla;
+                select.appendChild(opt);
+            }
+            document.getElementById("rules-container").innerHTML = "";
+            document.getElementById("execute-status").innerText = "";
+        }
+
+        function cargarColumnas() {
+            document.getElementById("rules-container").innerHTML = "";
+            agregarFilaRegla();
+        }
+
+        function agregarFilaRegla() {
+            const tabla = document.getElementById("rule-table").value;
+            if (!tabla) return;
+            const columnas = schemaCache[tabla] || [];
+            const container = document.getElementById("rules-container");
+            const div = document.createElement("div");
+            div.className = "flex space-x-2 rule-row";
+            
+            let colsHtml = '<select class="rule-col w-1/2 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none">';
+            columnas.forEach(c => colsHtml += `<option value="${c}">${c}</option>`);
+            colsHtml += '</select>';
+            
+            div.innerHTML = `
+                ${colsHtml}
+                <select class="rule-algo w-1/2 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none">
+                    <option value="redaccion">Redacción (X)</option>
+                    <option value="hashing">Hashing Rápido</option>
+                    <option value="encriptacion">Encriptación Fuerte</option>
+                    <option value="fpe">FPE (Pesado)</option>
+                </select>
+                <button onclick="this.parentElement.remove()" class="text-rose-500 hover:text-rose-400 px-2">×</button>
+            `;
+            container.appendChild(div);
+        }
+
+        async function ejecutarPrueba() {
+            if (!activeConnectionId) return;
+            const tabla = document.getElementById("rule-table").value;
+            if (!tabla) { alert("Selecciona una tabla primero."); return; }
+
+            const btn = document.getElementById("btn-execute");
+            const status = document.getElementById("execute-status");
+            btn.innerText = "Procesando...";
+            btn.disabled = true;
+            status.innerText = "";
+
+            const reglas = {};
+            document.querySelectorAll(".rule-row").forEach(row => {
+                const col = row.querySelector(".rule-col").value;
+                const algo = row.querySelector(".rule-algo").value;
+                if(col) reglas[col] = algo;
+            });
+
+            try {
+                const response = await fetch('/api/v1/execute_test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ connection_id: activeConnectionId, tabla: tabla, reglas: reglas })
+                });
+
+                if (response.status === 401) { window.location.href = "/login"; return; }
+                const data = await response.json();
+                
+                if(response.ok) actualizarMetricas(data);
+                else status.innerText = "❌ " + data.detail;
+            } catch (error) {
+                status.innerText = "❌ Error de conexión con API.";
+            } finally {
+                btn.innerText = "▶ Ejecutar Prueba y Medir";
+                btn.disabled = false;
+            }
+        }
+
+        function limpiarMetricas() {
+            document.getElementById("kpi-db").innerText = "0 ms";
+            document.getElementById("kpi-sec").innerText = "0 ms";
+            document.getElementById("kpi-total").innerText = "0 ms";
+            document.getElementById("data-preview").innerText = "";
+            myChart.data.datasets[0].data = [0, 0];
+            myChart.update();
+        }
+
+        function actualizarMetricas(data) {
+            document.getElementById("kpi-db").innerText = `${data.tiempo_bd_ms} ms`;
+            document.getElementById("kpi-sec").innerText = `${data.tiempo_enmascarado_ms} ms`;
+            document.getElementById("kpi-total").innerText = `${data.overhead_total_ms} ms`;
+            document.getElementById("data-preview").innerText = JSON.stringify(data.data, null, 2);
+            myChart.data.datasets[0].data = [data.tiempo_bd_ms, data.tiempo_enmascarado_ms];
+            myChart.update();
+        }
+
+        function initChart() {
+            const ctx = document.getElementById('latencyChart').getContext('2d');
+            myChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Tiempo DB (Nativo)', 'Overhead SecOps'],
+                    datasets: [{
+                        label: 'Milisegundos (ms)',
+                        data: [0, 0],
+                        backgroundColor: ['rgba(59, 130, 246, 0.7)', 'rgba(245, 158, 11, 0.7)'],
+                        borderColor: ['#3b82f6', '#f59e0b'],
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#cbd5e1' } }, x: { grid: { display: false }, ticks: { color: '#cbd5e1' } } } }
+            });
+        }
+
+        async function logout() {
+            await fetch('/api/logout', { method: 'POST' });
+            window.location.href = '/login';
+        }
+    </script>
+</body>
+</html>

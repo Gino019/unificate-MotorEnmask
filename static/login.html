@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecOps Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: { colors: { cyber: { green: '#10b981', blue: '#3b82f6', red: '#ef4444' } } }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-900 flex items-center justify-center min-h-screen text-white font-sans">
+    <div class="bg-gray-800 p-10 rounded-2xl border border-gray-700 shadow-2xl w-full max-w-md relative overflow-hidden group">
+        <div class="absolute top-0 left-0 w-full h-1 bg-cyber-blue shadow-[0_0_15px_rgba(59,130,246,0.5)]"></div>
+        
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-cyber-green flex justify-center items-center gap-3">
+                <svg class="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                SecOps Auth
+            </h1>
+            <p class="text-gray-400 mt-2">Plataforma de Monitoreo Multi-Motor</p>
+        </div>
+        
+        <form id="loginForm" class="space-y-6">
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-2">Usuario Administrador</label>
+                <input type="text" id="username" class="w-full bg-gray-900/80 border border-gray-600 rounded-lg p-3.5 text-white focus:ring-2 focus:ring-cyber-blue focus:border-cyber-blue outline-none transition-all" placeholder="admin" required>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-400 mb-2">Clave de Acceso</label>
+                <input type="password" id="password" class="w-full bg-gray-900/80 border border-gray-600 rounded-lg p-3.5 text-white focus:ring-2 focus:ring-cyber-blue focus:border-cyber-blue outline-none transition-all" placeholder="••••••••" required>
+            </div>
+            <div id="errorMsg" class="text-cyber-red text-sm font-medium hidden bg-red-900/20 border border-red-800/50 p-3 rounded text-center">Credenciales inválidas. Acceso denegado.</div>
+            
+            <button type="submit" class="w-full bg-gradient-to-r from-cyber-blue to-blue-600 hover:from-blue-500 hover:to-blue-400 text-white font-bold py-3.5 rounded-xl shadow-[0_0_15px_rgba(59,130,246,0.3)] transition-all flex justify-center items-center gap-2">
+                Autenticar Sesión
+            </button>
+        </form>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+            
+            const formData = new URLSearchParams();
+            formData.append('username', u);
+            formData.append('password', p);
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: formData
+                });
+                
+                if (res.ok) {
+                    window.location.href = '/';
+                } else {
+                    document.getElementById('errorMsg').classList.remove('hidden');
+                }
+            } catch (err) {
+                document.getElementById('errorMsg').classList.remove('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

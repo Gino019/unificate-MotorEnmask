@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------
+  # API BACKEND & SEC-OPS MONITOR
+  # ----------------------------------------
+  api:
+    build: .
+    container_name: secops_api
+    ports:
+      - "8000:8000"
+    environment:
+      # Sobrescribimos el host "localhost" para que el backend 
+      # apunte al DNS interno de Docker de cada contenedor DB
+      - PG_HOST=postgres_db
+      - MYSQL_HOST=mysql_db
+      - MSSQL_HOST=sqlserver_db
+      - MONGO_URI=mongodb://mongodb_db:27017/
+      - REDIS_HOST=redis_db
+      - NEO4J_URI=bolt://neo4j_db:7687
+    depends_on:
+      - postgres_db
+      - mysql_db
+      - sqlserver_db
+      - mongodb_db
+      - redis_db
+      - neo4j_db
+    volumes:
+      - .:/app # Hot-reload para desarrollo
+
+  # ----------------------------------------
+  # 1. POSTGRESQL
+  # ----------------------------------------
+  postgres_db:
+    image: postgres:15
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+
+  # ----------------------------------------
+  # 2. MYSQL
+  # ----------------------------------------
+  mysql_db:
+    image: mysql:8
+    container_name: mysql_db
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: mysql
+    ports:
+      - "3306:3306"
+
+  # ----------------------------------------
+  # 3. SQL SERVER
+  # ----------------------------------------
+  sqlserver_db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sqlserver_db
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "StrongPassword123!"
+    ports:
+      - "1433:1433"
+
+  # ----------------------------------------
+  # 4. MONGODB
+  # ----------------------------------------
+  mongodb_db:
+    image: mongo:latest
+    container_name: mongodb_db
+    ports:
+      - "27017:27017"
+
+  # ----------------------------------------
+  # 5. REDIS
+  # ----------------------------------------
+  redis_db:
+    image: redis:alpine
+    container_name: redis_db
+    ports:
+      - "6379:6379"
+
+  # ----------------------------------------
+  # 6. NEO4J
+  # ----------------------------------------
+  neo4j_db:
+    image: neo4j:latest
+    container_name: neo4j_db
+    environment:
+      NEO4J_AUTH: neo4j/password
+    ports:
+      - "7474:7474" # Interfaz Browser Neo4j
+      - "7687:7687" # Protocolo Bolt para Python
