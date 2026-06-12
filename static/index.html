@@ -12,6 +12,9 @@
         .hidden { display: none !important; }
         .tab-active { background-color: #0ea5e9; color: white; border-color: #38bdf8; }
         .tab-inactive { background-color: #1e293b; color: #94a3b8; border-color: #334155; }
+        @keyframes pulse-red { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }
+        .badge-active { animation: pulse-red 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        .governance-hardened { border: 1px solid #f59e0b !important; box-shadow: 0 0 20px rgba(245, 158, 11, 0.3) !important; }
     </style>
 </head>
 <body class="min-h-screen p-6">
@@ -23,9 +26,15 @@
                 SecOps Universal Monitor
             </h1>
         </div>
-        <button onclick="logout()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors text-sm font-medium">
-            Cerrar Sesión
-        </button>
+        <div class="flex items-center space-x-3">
+            <div id="sdm-badge" class="hidden px-3 py-1 rounded-full text-xs font-bold flex items-center space-x-1 badge-active bg-amber-500/20 border border-amber-500 text-amber-400">
+                <span class="w-2 h-2 bg-amber-400 rounded-full inline-block"></span>
+                <span>MODO HARDENED</span>
+            </div>
+            <button onclick="logout()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors text-sm font-medium">
+                Cerrar Sesión
+            </button>
+        </div>
     </nav>
 
     <!-- Context Bar (Tabs) -->
@@ -158,6 +167,35 @@
                     </div>
                 </div>
             </div>
+
+            <!-- PANEL DE GOBERNANZA SDM -->
+            <div id="governance-panel" class="glass-panel p-6 hidden">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-amber-400 flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                        Control de Gobernanza (SDM)
+                    </h3>
+                    <div id="sdm-status-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-slate-700 text-slate-400 border border-slate-600">
+                        INACTIVA
+                    </div>
+                </div>
+
+                <p class="text-xs text-slate-400 mb-4 leading-relaxed">
+                    El <strong class="text-slate-200">Static Data Masking</strong> sobreescribe los datos reales en la base de datos con sus versiones enmascaradas. El backup original queda cifrado con AES-256. Un <code>SELECT *</code> directo a la BD solo revelara datos protegidos.
+                </p>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <button id="btn-protect" onclick="activarProteccion()" class="bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 px-4 rounded-lg transition-all text-sm flex items-center justify-center space-x-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                        <span>Proteger BD (SDM)</span>
+                    </button>
+                    <button id="btn-restore" onclick="restaurarDatos()" class="bg-slate-600 hover:bg-slate-500 text-white font-bold py-3 px-4 rounded-lg transition-all text-sm flex items-center justify-center space-x-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                        <span>Revertir a Originales</span>
+                    </button>
+                </div>
+                <p id="governance-status" class="text-xs mt-3 text-center text-slate-400"></p>
+            </div>
         </div>
     </div>
 
@@ -165,6 +203,7 @@
         let schemaCache = {};
         let myChart = null;
         let activeConnectionId = null;
+        let sdmEstadoActual = "INACTIVA";
 
         document.addEventListener("DOMContentLoaded", () => {
             toggleFormFields();
@@ -250,19 +289,20 @@
             activeConnectionId = null;
             document.getElementById("view-connect").classList.remove("hidden");
             document.getElementById("view-rules").classList.add("hidden");
+            document.getElementById("governance-panel").classList.add("hidden");
             limpiarMetricas();
-            fetchConnections(); // Refresca tabs para resaltar "Nueva Conexión"
+            fetchConnections();
         }
 
         async function selectConnection(conn_id, alias) {
             activeConnectionId = conn_id;
             document.getElementById("view-connect").classList.add("hidden");
             document.getElementById("view-rules").classList.remove("hidden");
+            document.getElementById("governance-panel").classList.remove("hidden");
             document.getElementById("rules-title").innerText = `Reglas: ${alias}`;
             limpiarMetricas();
-            fetchConnections(); // Refresca tabs
+            fetchConnections();
 
-            // Traer el esquema del backend para este contexto
             try {
                 const res = await fetch(`/api/v1/schema?connection_id=${conn_id}`);
                 if (res.ok) {
@@ -449,6 +489,130 @@
         async function logout() {
             await fetch('/api/logout', { method: 'POST' });
             window.location.href = '/login';
+        }
+
+        // ─── GOBERNANZA SDM ───────────────────────────────────────────────
+
+        function _getReglasActuales() {
+            const tabla = document.getElementById("rule-table").value;
+            const reglas = {};
+            document.querySelectorAll(".rule-row").forEach(row => {
+                const col = row.querySelector(".rule-col")?.value;
+                const algo = row.querySelector(".rule-algo")?.value;
+                if (col) reglas[col] = algo;
+            });
+            return { tabla, reglas };
+        }
+
+        async function actualizarBadgeEstado(tabla) {
+            if (!activeConnectionId || !tabla) return;
+            try {
+                const res = await fetch(`/api/v1/governance/status?connection_id=${activeConnectionId}&tabla=${tabla}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    sdmEstadoActual = data.estado;
+                    const badge = document.getElementById("sdm-status-badge");
+                    const globalBadge = document.getElementById("sdm-badge");
+                    const govPanel = document.getElementById("governance-panel");
+
+                    if (data.estado === "ACTIVA") {
+                        badge.innerText = "ACTIVA";
+                        badge.className = "px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 border border-amber-500 text-amber-400 badge-active";
+                        globalBadge.classList.remove("hidden");
+                        govPanel.classList.add("governance-hardened");
+                    } else {
+                        badge.innerText = "INACTIVA";
+                        badge.className = "px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 border border-emerald-600 text-emerald-400";
+                        globalBadge.classList.add("hidden");
+                        govPanel.classList.remove("governance-hardened");
+                    }
+                }
+            } catch(e) { console.error(e); }
+        }
+
+        // Auto-actualizar badge cuando el usuario selecciona tabla
+        document.addEventListener("DOMContentLoaded", () => {
+            document.getElementById("rule-table").addEventListener("change", () => {
+                const tabla = document.getElementById("rule-table").value;
+                actualizarBadgeEstado(tabla);
+            });
+        });
+
+        async function activarProteccion() {
+            if (!activeConnectionId) { alert("Selecciona una conexion primero."); return; }
+            const { tabla, reglas } = _getReglasActuales();
+            if (!tabla) { alert("Selecciona una tabla para proteger."); return; }
+            if (Object.keys(reglas).length === 0) { alert("Define al menos una regla de enmascaramiento."); return; }
+
+            const confirmado = confirm(
+                `ADVERTENCIA: Esta operacion sobreescribe los datos reales de la tabla '${tabla}' de forma permanente.\n\nSe creara un backup cifrado con AES-256 para recuperacion.\n\n¿Confirmas la activacion del Static Data Masking?`
+            );
+            if (!confirmado) return;
+
+            const btn = document.getElementById("btn-protect");
+            const statusEl = document.getElementById("governance-status");
+            btn.innerText = "Protegiendo...";
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/v1/governance/protect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ connection_id: activeConnectionId, tabla, reglas })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    statusEl.innerText = `[OK] ${data.filas_protegidas} filas protegidas. Backup: ${data.backup_tabla || data.shadow_collection}`;
+                    statusEl.className = "text-xs mt-3 text-center text-emerald-400";
+                    actualizarBadgeEstado(tabla);
+                } else {
+                    statusEl.innerText = `[ERROR] ${data.detail}`;
+                    statusEl.className = "text-xs mt-3 text-center text-rose-400";
+                }
+            } catch(e) {
+                statusEl.innerText = "[ERROR] Error de conexion con API.";
+            } finally {
+                btn.innerText = "Proteger BD (SDM)";
+                btn.disabled = false;
+            }
+        }
+
+        async function restaurarDatos() {
+            if (!activeConnectionId) { alert("Selecciona una conexion primero."); return; }
+            const tabla = document.getElementById("rule-table").value;
+            if (!tabla) { alert("Selecciona la tabla a restaurar."); return; }
+
+            const confirmado = confirm(
+                `Restaurar los datos originales de '${tabla}' desde el backup cifrado.\n\nEsto eliminara el backup y desactivara el modo Hardened.\n\n¿Confirmas la restauracion?`
+            );
+            if (!confirmado) return;
+
+            const btn = document.getElementById("btn-restore");
+            const statusEl = document.getElementById("governance-status");
+            btn.innerText = "Restaurando...";
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/v1/governance/restore', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ connection_id: activeConnectionId, tabla })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    statusEl.innerText = `[OK] ${data.filas_restauradas} filas restauradas exitosamente.`;
+                    statusEl.className = "text-xs mt-3 text-center text-blue-400";
+                    actualizarBadgeEstado(tabla);
+                } else {
+                    statusEl.innerText = `[ERROR] ${data.detail}`;
+                    statusEl.className = "text-xs mt-3 text-center text-rose-400";
+                }
+            } catch(e) {
+                statusEl.innerText = "[ERROR] Error de conexion con API.";
+            } finally {
+                btn.innerText = "Revertir a Originales";
+                btn.disabled = false;
+            }
         }
     </script>
 </body>
