@@ -21,7 +21,8 @@ from config import settings
 from database_manager import DatabaseFactory
 from db_usuarios import (autenticar_usuario, buscar_o_crear_usuario_google,
                          init_db, registrar_usuario)
-from governance import obtener_estado, proteger_tabla, restaurar_tabla
+from governance import (obtener_estado, proteger_tabla, restaurar_tabla,
+                        MOTORES_SDM_DISPONIBLES)
 from monitor import monitor_overhead
 
 # ── Configuración ─────────────────────────────────────────────────────────────
@@ -310,8 +311,11 @@ async def activar_proteccion(request: Request, payload: Dict[str, Any] = Body(..
 
     config = obtener_conexion(request, connection_id)
     motor_nombre = config.get("motor")
-    if motor_nombre not in ("sqlite", "postgres", "mongodb"):
-        raise HTTPException(status_code=400, detail=f"SDM no disponible para '{motor_nombre}'.")
+    if motor_nombre not in MOTORES_SDM_DISPONIBLES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"SDM no disponible para '{motor_nombre}'. Soportados: {', '.join(MOTORES_SDM_DISPONIBLES)}."
+        )
 
     motor = DatabaseFactory.obtener_motor(motor_nombre, config.get("credenciales"))
     try:
