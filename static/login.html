@@ -1,74 +1,375 @@
 <!DOCTYPE html>
-<html lang="es" class="dark">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SecOps Login</title>
+    <title>SecOps Universal — Acceso</title>
+    <meta name="description" content="Portal de acceso al panel SecOps Universal Multi-DB Masking Monitor.">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: { colors: { cyber: { green: '#10b981', blue: '#3b82f6', red: '#ef4444' } } }
-            }
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Inter', sans-serif; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+
+        body {
+            background-color: #060b14;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
         }
-    </script>
+
+        /* Animated background grid */
+        body::before {
+            content: '';
+            position: fixed; inset: 0;
+            background-image:
+                linear-gradient(rgba(56,189,248,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(56,189,248,0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+        }
+
+        /* Glow orbs */
+        .orb-1 { position: fixed; top: -20%; left: -10%; width: 600px; height: 600px; border-radius: 50%; background: radial-gradient(circle, rgba(56,189,248,0.06) 0%, transparent 70%); pointer-events: none; }
+        .orb-2 { position: fixed; bottom: -20%; right: -10%; width: 500px; height: 500px; border-radius: 50%; background: radial-gradient(circle, rgba(99,102,241,0.06) 0%, transparent 70%); pointer-events: none; }
+
+        /* Card */
+        .auth-card {
+            background: rgba(10, 16, 28, 0.95);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 20px;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(56,189,248,0.05);
+            width: 100%;
+            max-width: 420px;
+            padding: 40px;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Inputs */
+        .auth-input {
+            width: 100%;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            padding: 11px 14px;
+            color: #e2e8f0;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.2s;
+        }
+        .auth-input:focus {
+            border-color: rgba(56,189,248,0.4);
+            background: rgba(56,189,248,0.03);
+            box-shadow: 0 0 0 3px rgba(56,189,248,0.08);
+        }
+        .auth-input::placeholder { color: #334155; }
+
+        /* Buttons */
+        .btn-main {
+            width: 100%;
+            padding: 12px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            background: linear-gradient(135deg, #0284c7, #6366f1);
+            color: white;
+            letter-spacing: 0.01em;
+        }
+        .btn-main:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 8px 20px rgba(2,132,199,0.25); }
+        .btn-main:disabled { opacity: 0.5; transform: none; cursor: not-allowed; }
+
+        .btn-google {
+            width: 100%;
+            padding: 11px;
+            border-radius: 10px;
+            font-weight: 500;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #cbd5e1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .btn-google:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.18); }
+
+        /* Divider */
+        .divider { display: flex; align-items: center; gap: 12px; margin: 20px 0; }
+        .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,0.07); }
+        .divider span { font-size: 11px; color: #334155; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+
+        /* Switch link */
+        .switch-link { color: #38bdf8; cursor: pointer; font-weight: 500; transition: color 0.15s; }
+        .switch-link:hover { color: #7dd3fc; }
+
+        /* Animations */
+        @keyframes fadeSlide { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+        .animate-in { animation: fadeSlide 0.3s ease forwards; }
+
+        /* Alert */
+        .alert-error { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #f87171; }
+        .alert-success { background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #34d399; }
+
+        .field-label { display: block; font-size: 11px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+
+        /* Password strength */
+        .strength-bar { height: 3px; border-radius: 2px; transition: all 0.3s; margin-top: 5px; }
+    </style>
 </head>
-<body class="bg-gray-900 flex items-center justify-center min-h-screen text-white font-sans">
-    <div class="bg-gray-800 p-10 rounded-2xl border border-gray-700 shadow-2xl w-full max-w-md relative overflow-hidden group">
-        <div class="absolute top-0 left-0 w-full h-1 bg-cyber-blue shadow-[0_0_15px_rgba(59,130,246,0.5)]"></div>
-        
-        <div class="text-center mb-8">
-            <h1 class="text-3xl font-bold text-cyber-green flex justify-center items-center gap-3">
-                <svg class="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-                SecOps Auth
-            </h1>
-            <p class="text-gray-400 mt-2">Plataforma de Monitoreo Multi-Motor</p>
+<body>
+    <!-- Background effects -->
+    <div class="orb-1"></div>
+    <div class="orb-2"></div>
+
+    <div class="auth-card animate-in">
+        <!-- Logo -->
+        <div class="flex items-center gap-3 mb-8">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:linear-gradient(135deg,#0284c7,#6366f1)">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                </svg>
+            </div>
+            <div>
+                <div class="text-base font-bold text-slate-100 leading-none">SecOps Universal</div>
+                <div class="text-xs text-slate-600 mono mt-0.5">Multi-DB Masking Monitor</div>
+            </div>
         </div>
-        
-        <form id="loginForm" class="space-y-6">
-            <div>
-                <label class="block text-sm font-medium text-gray-400 mb-2">Usuario Administrador</label>
-                <input type="text" id="username" class="w-full bg-gray-900/80 border border-gray-600 rounded-lg p-3.5 text-white focus:ring-2 focus:ring-cyber-blue focus:border-cyber-blue outline-none transition-all" placeholder="admin" required>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-400 mb-2">Clave de Acceso</label>
-                <input type="password" id="password" class="w-full bg-gray-900/80 border border-gray-600 rounded-lg p-3.5 text-white focus:ring-2 focus:ring-cyber-blue focus:border-cyber-blue outline-none transition-all" placeholder="••••••••" required>
-            </div>
-            <div id="errorMsg" class="text-cyber-red text-sm font-medium hidden bg-red-900/20 border border-red-800/50 p-3 rounded text-center">Credenciales inválidas. Acceso denegado.</div>
-            
-            <button type="submit" class="w-full bg-gradient-to-r from-cyber-blue to-blue-600 hover:from-blue-500 hover:to-blue-400 text-white font-bold py-3.5 rounded-xl shadow-[0_0_15px_rgba(59,130,246,0.3)] transition-all flex justify-center items-center gap-2">
-                Autenticar Sesión
+
+        <!-- ═══ VISTA: LOGIN ═══════════════════════════════════════════ -->
+        <div id="view-login">
+            <h2 class="text-xl font-bold text-slate-100 mb-1">Bienvenido</h2>
+            <p class="text-sm text-slate-500 mb-6">Accede con tu cuenta para continuar</p>
+
+            <div id="login-alert" class="hidden mb-4"></div>
+
+            <form id="form-login" onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                    <label class="field-label">Correo Electrónico</label>
+                    <input id="login-email" type="email" placeholder="tu@correo.com" class="auth-input" required autocomplete="email">
+                </div>
+                <div>
+                    <label class="field-label">Contraseña</label>
+                    <input id="login-password" type="password" placeholder="••••••••" class="auth-input" required autocomplete="current-password">
+                </div>
+                <button type="submit" id="btn-login" class="btn-main mt-2">
+                    Iniciar Sesión
+                </button>
+            </form>
+
+            <div class="divider"><span>o continúa con</span></div>
+
+            <button onclick="googleLogin()" id="btn-google-login" class="btn-google">
+                <!-- Google SVG Icon (oficial) -->
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M17.64 9.2045c0-.6381-.0573-1.2518-.1636-1.8409H9v3.4814h4.8436c-.2086 1.125-.8427 2.0782-1.7959 2.7164v2.2581h2.9086c1.7018-1.5668 2.685-3.874 2.685-6.615z" fill="#4285F4"/>
+                    <path d="M9 18c2.43 0 4.4673-.806 5.9564-2.1805l-2.9086-2.2581c-.8059.54-1.8368.8591-3.0477.8591-2.3441 0-4.3282-1.5836-5.036-3.7109H.957v2.3318C2.4382 15.9832 5.4818 18 9 18z" fill="#34A853"/>
+                    <path d="M3.964 10.71c-.18-.54-.2827-1.1168-.2827-1.71s.1027-1.17.2827-1.71V4.9582H.957C.3477 6.1732 0 7.5477 0 9s.3477 2.8268.957 4.0418L3.964 10.71z" fill="#FBBC05"/>
+                    <path d="M9 3.5795c1.3214 0 2.5077.4541 3.4405 1.346l2.5813-2.5814C13.4632.891 11.4259 0 9 0 5.4818 0 2.4382 2.0168.957 4.9582L3.964 7.29C4.6718 5.1627 6.6559 3.5795 9 3.5795z" fill="#EA4335"/>
+                </svg>
+                Iniciar Sesión con Google
             </button>
-        </form>
+
+            <p class="text-center text-sm text-slate-600 mt-6">
+                ¿No tienes cuenta?
+                <span class="switch-link" onclick="showRegister()">Regístrate aquí</span>
+            </p>
+        </div>
+
+        <!-- ═══ VISTA: REGISTRO ════════════════════════════════════════ -->
+        <div id="view-register" class="hidden">
+            <h2 class="text-xl font-bold text-slate-100 mb-1">Crear Cuenta</h2>
+            <p class="text-sm text-slate-500 mb-6">Únete a SecOps Universal</p>
+
+            <div id="register-alert" class="hidden mb-4"></div>
+
+            <form id="form-register" onsubmit="handleRegister(event)" class="space-y-4">
+                <div>
+                    <label class="field-label">Nombre Completo</label>
+                    <input id="reg-nombre" type="text" placeholder="Juan García" class="auth-input" required autocomplete="name">
+                </div>
+                <div>
+                    <label class="field-label">Correo Electrónico</label>
+                    <input id="reg-email" type="email" placeholder="tu@correo.com" class="auth-input" required autocomplete="email">
+                </div>
+                <div>
+                    <label class="field-label">Contraseña</label>
+                    <input id="reg-password" type="password" placeholder="Mínimo 8 caracteres" class="auth-input" required autocomplete="new-password" oninput="updateStrength(this.value)">
+                    <div id="strength-bar" class="strength-bar bg-slate-800 w-full mt-1"></div>
+                    <p id="strength-label" class="text-xs text-slate-700 mt-1"></p>
+                </div>
+                <div>
+                    <label class="field-label">Confirmar Contraseña</label>
+                    <input id="reg-password2" type="password" placeholder="Repite tu contraseña" class="auth-input" required autocomplete="new-password">
+                </div>
+                <button type="submit" id="btn-register" class="btn-main mt-2">
+                    Crear Cuenta
+                </button>
+            </form>
+
+            <div class="divider"><span>o regístrate con</span></div>
+
+            <button onclick="googleLogin()" id="btn-google-register" class="btn-google">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M17.64 9.2045c0-.6381-.0573-1.2518-.1636-1.8409H9v3.4814h4.8436c-.2086 1.125-.8427 2.0782-1.7959 2.7164v2.2581h2.9086c1.7018-1.5668 2.685-3.874 2.685-6.615z" fill="#4285F4"/>
+                    <path d="M9 18c2.43 0 4.4673-.806 5.9564-2.1805l-2.9086-2.2581c-.8059.54-1.8368.8591-3.0477.8591-2.3441 0-4.3282-1.5836-5.036-3.7109H.957v2.3318C2.4382 15.9832 5.4818 18 9 18z" fill="#34A853"/>
+                    <path d="M3.964 10.71c-.18-.54-.2827-1.1168-.2827-1.71s.1027-1.17.2827-1.71V4.9582H.957C.3477 6.1732 0 7.5477 0 9s.3477 2.8268.957 4.0418L3.964 10.71z" fill="#FBBC05"/>
+                    <path d="M9 3.5795c1.3214 0 2.5077.4541 3.4405 1.346l2.5813-2.5814C13.4632.891 11.4259 0 9 0 5.4818 0 2.4382 2.0168.957 4.9582L3.964 7.29C4.6718 5.1627 6.6559 3.5795 9 3.5795z" fill="#EA4335"/>
+                </svg>
+                Continuar con Google
+            </button>
+
+            <p class="text-center text-sm text-slate-600 mt-6">
+                ¿Ya tienes cuenta?
+                <span class="switch-link" onclick="showLogin()">Inicia sesión</span>
+            </p>
+        </div>
+
+        <!-- Footer -->
+        <p class="text-center text-xs text-slate-700 mt-6 mono">
+            SecOps Universal v5.0 · Datos protegidos
+        </p>
     </div>
 
     <script>
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        // ── VIEW SWITCHING ────────────────────────────────────────────────────
+        function showLogin() {
+            document.getElementById('view-login').classList.remove('hidden');
+            document.getElementById('view-register').classList.add('hidden');
+            clearAlerts();
+        }
+        function showRegister() {
+            document.getElementById('view-login').classList.add('hidden');
+            document.getElementById('view-register').classList.remove('hidden');
+            clearAlerts();
+        }
+        function clearAlerts() {
+            ['login-alert','register-alert'].forEach(id => {
+                const el = document.getElementById(id);
+                el.className = 'hidden mb-4';
+                el.textContent = '';
+            });
+        }
+        function showAlert(id, msg, type = 'error') {
+            const el = document.getElementById(id);
+            el.textContent = msg;
+            el.className = `mb-4 ${type === 'error' ? 'alert-error' : 'alert-success'}`;
+        }
+
+        // ── PASSWORD STRENGTH ─────────────────────────────────────────────────
+        function updateStrength(val) {
+            const bar = document.getElementById('strength-bar');
+            const lbl = document.getElementById('strength-label');
+            let score = 0;
+            if (val.length >= 8) score++;
+            if (/[A-Z]/.test(val)) score++;
+            if (/[0-9]/.test(val)) score++;
+            if (/[^A-Za-z0-9]/.test(val)) score++;
+            const levels = [
+                { pct:'25%', color:'#ef4444', label:'Muy débil' },
+                { pct:'50%', color:'#f59e0b', label:'Débil' },
+                { pct:'75%', color:'#3b82f6', label:'Buena' },
+                { pct:'100%', color:'#10b981', label:'Excelente' },
+            ];
+            const lv = levels[Math.max(0, score-1)];
+            bar.style.width = val.length ? lv.pct : '0%';
+            bar.style.background = lv.color;
+            lbl.textContent = val.length ? lv.label : '';
+            lbl.style.color = lv.color;
+        }
+
+        // ── LOGIN ─────────────────────────────────────────────────────────────
+        async function handleLogin(e) {
             e.preventDefault();
-            const u = document.getElementById('username').value;
-            const p = document.getElementById('password').value;
-            
-            const formData = new URLSearchParams();
-            formData.append('username', u);
-            formData.append('password', p);
+            const btn = document.getElementById('btn-login');
+            btn.textContent = 'Verificando...';
+            btn.disabled = true;
+
+            const body = new URLSearchParams({
+                correo:   document.getElementById('login-email').value,
+                password: document.getElementById('login-password').value,
+            });
 
             try {
-                const res = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: formData
-                });
-                
+                const res = await fetch('/api/login', { method:'POST', body, headers:{'Content-Type':'application/x-www-form-urlencoded'} });
+                const data = await res.json();
                 if (res.ok) {
-                    window.location.href = '/';
+                    showAlert('login-alert', `Bienvenido, ${data.nombre}. Redirigiendo...`, 'success');
+                    setTimeout(() => window.location.href = '/', 800);
                 } else {
-                    document.getElementById('errorMsg').classList.remove('hidden');
+                    showAlert('login-alert', data.detail || 'Error al iniciar sesión.');
                 }
-            } catch (err) {
-                document.getElementById('errorMsg').classList.remove('hidden');
+            } catch {
+                showAlert('login-alert', 'Error de conexión con el servidor.');
+            } finally {
+                btn.textContent = 'Iniciar Sesión';
+                btn.disabled = false;
             }
-        });
+        }
+
+        // ── REGISTER ──────────────────────────────────────────────────────────
+        async function handleRegister(e) {
+            e.preventDefault();
+            const pw1 = document.getElementById('reg-password').value;
+            const pw2 = document.getElementById('reg-password2').value;
+
+            if (pw1 !== pw2) {
+                showAlert('register-alert', 'Las contraseñas no coinciden.');
+                return;
+            }
+            if (pw1.length < 8) {
+                showAlert('register-alert', 'La contraseña debe tener al menos 8 caracteres.');
+                return;
+            }
+
+            const btn = document.getElementById('btn-register');
+            btn.textContent = 'Creando cuenta...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        nombre:   document.getElementById('reg-nombre').value,
+                        correo:   document.getElementById('reg-email').value,
+                        password: pw1,
+                    })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert('register-alert', `Cuenta creada, ${data.nombre}. Redirigiendo...`, 'success');
+                    setTimeout(() => window.location.href = '/', 800);
+                } else {
+                    showAlert('register-alert', data.detail || 'Error al crear la cuenta.');
+                }
+            } catch {
+                showAlert('register-alert', 'Error de conexión con el servidor.');
+            } finally {
+                btn.textContent = 'Crear Cuenta';
+                btn.disabled = false;
+            }
+        }
+
+        // ── GOOGLE OAUTH ──────────────────────────────────────────────────────
+        function googleLogin() {
+            window.location.href = '/api/v1/auth/google/login';
+        }
+
+        // Si hay ?error en la URL (ej: redirigido por Google con error), mostrarlo
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('error')) {
+            showAlert('login-alert', decodeURIComponent(params.get('error')));
+        }
     </script>
 </body>
 </html>

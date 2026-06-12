@@ -10,3 +10,8 @@ neo4j
 cryptography
 python-multipart
 faker
+passlib[bcrypt]
+authlib
+httpx
+python-dotenv
+itsdangerous

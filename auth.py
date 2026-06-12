@@ -1,32 +1,56 @@
-from fastapi import Request, HTTPException, status
+"""
+auth.py — Gestión de sesiones en memoria
+Sesiones ahora incluyen: username, email, proveedor y el mapa de conexiones concurrentes.
+"""
+
 import secrets
 import uuid
+from fastapi import Request, HTTPException, status
 from typing import Dict, Any
 
-# Estructura: {"token": {"username": "admin", "conexiones": {"uuid_1": {...}, "uuid_2": {...}}}}
+# Estructura:
+# {
+#   "token_hex": {
+#       "username": "John Doe",
+#       "email": "john@example.com",
+#       "proveedor": "local" | "google",
+#       "conexiones": { "uuid_conn": {...} }
+#   }
+# }
 SESIONES_ACTIVAS: Dict[str, Dict[str, Any]] = {}
 
-def crear_token_sesion(username: str) -> str:
+
+def crear_token_sesion(username: str, email: str, proveedor: str = "local") -> str:
+    """Genera un token seguro y registra la sesión en memoria."""
     token = secrets.token_hex(32)
-    SESIONES_ACTIVAS[token] = {"username": username, "conexiones": {}}
+    SESIONES_ACTIVAS[token] = {
+        "username": username,
+        "email": email,
+        "proveedor": proveedor,
+        "conexiones": {}
+    }
     return token
+
 
 def revocar_token(token: str):
     if token in SESIONES_ACTIVAS:
         del SESIONES_ACTIVAS[token]
 
+
 def obtener_sesion_actual(request: Request) -> Dict[str, Any]:
+    """Extrae y valida la sesión desde la cookie HTTP-only."""
     token = request.cookies.get("session_token")
     if not token or token not in SESIONES_ACTIVAS:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No autorizado",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="No autorizado. Inicia sesión.",
         )
     return SESIONES_ACTIVAS[token]
 
+
+# ── Conexiones concurrentes ───────────────────────────────────────────────────
+
 def agregar_conexion(request: Request, config: Dict[str, Any]) -> str:
-    """ Genera un UUID para la conexión y la agrega al estado del usuario """
     token = request.cookies.get("session_token")
     if token and token in SESIONES_ACTIVAS:
         conn_id = uuid.uuid4().hex
@@ -34,20 +58,16 @@ def agregar_conexion(request: Request, config: Dict[str, Any]) -> str:
         return conn_id
     raise HTTPException(status_code=401, detail="Sesión inválida")
 
+
 def obtener_conexion(request: Request, connection_id: str) -> Dict[str, Any]:
-    """ Recupera el contexto de una conexión específica """
     sesion = obtener_sesion_actual(request)
     conexiones = sesion.get("conexiones", {})
     if connection_id not in conexiones:
-        raise HTTPException(status_code=404, detail="Conexión no encontrada o expirada")
+        raise HTTPException(status_code=404, detail="Conexión no encontrada o expirada.")
     return conexiones[connection_id]
 
+
 def eliminar_conexion(request: Request, connection_id: str):
-    """ Desconecta una base de datos específica sin cerrar la sesión global """
     token = request.cookies.get("session_token")
     if token and token in SESIONES_ACTIVAS:
-        if connection_id in SESIONES_ACTIVAS[token]["conexiones"]:
-            del SESIONES_ACTIVAS[token]["conexiones"][connection_id]
-
-def validar_credenciales(username: str, password: str) -> bool:
-    return username == "admin" and password == "admin123"
+        SESIONES_ACTIVAS[token]["conexiones"].pop(connection_id, None)

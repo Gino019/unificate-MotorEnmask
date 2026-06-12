@@ -3,617 +3,1027 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SecOps Universal - Multi-DB Masking</title>
+    <title>SecOps Universal — Multi-DB Masking Monitor</title>
+    <meta name="description" content="Panel de control de ciberseguridad para monitorización de rendimiento y gobernanza de datos en tiempo real.">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-        body { background-color: #0f172a; color: #f8fafc; }
-        .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 1rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+        * { font-family: 'Inter', sans-serif; }
+        code, pre, .mono { font-family: 'JetBrains Mono', monospace; }
+        body { background-color: #080d16; color: #e2e8f0; overflow: hidden; height: 100vh; }
+
+        /* Sidebar */
+        #sidebar {
+            background: linear-gradient(180deg, #0d1526 0%, #0a1020 100%);
+            border-right: 1px solid rgba(56, 189, 248, 0.1);
+            box-shadow: 4px 0 24px rgba(0,0,0,0.4);
+        }
+        .nav-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 10px 16px; border-radius: 8px; cursor: pointer;
+            color: #64748b; font-size: 13px; font-weight: 500;
+            transition: all 0.2s ease; border: 1px solid transparent;
+            position: relative;
+        }
+        .nav-item:hover { color: #94a3b8; background: rgba(255,255,255,0.04); }
+        .nav-item.active {
+            color: #38bdf8; background: rgba(56,189,248,0.08);
+            border-color: rgba(56,189,248,0.2);
+        }
+        .nav-item.active .nav-icon { color: #38bdf8; }
+        .nav-icon { width: 18px; height: 18px; flex-shrink: 0; }
+
+        /* Scrollable main content */
+        #main-content { overflow-y: auto; height: 100vh; }
+        #main-content::-webkit-scrollbar { width: 4px; }
+        #main-content::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 2px; }
+
+        /* Glass panels */
+        .glass { background: rgba(13, 21, 38, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; }
+        .glass-bright { background: rgba(15, 26, 50, 0.9); border: 1px solid rgba(56,189,248,0.12); border-radius: 12px; }
+
+        /* Inputs */
+        .input-field {
+            width: 100%; background: rgba(8,13,22,0.8); border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px; padding: 9px 14px; color: #e2e8f0; font-size: 13px; outline: none;
+            transition: border-color 0.2s;
+        }
+        .input-field:focus { border-color: rgba(56,189,248,0.5); }
+        .input-field::placeholder { color: #334155; }
+        label.field-label { display: block; font-size: 11px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+
+        /* Buttons */
+        .btn-primary { background: linear-gradient(135deg, #0284c7, #0369a1); color: white; font-weight: 600; padding: 10px 18px; border-radius: 8px; transition: all 0.2s; font-size: 13px; border: none; cursor: pointer; }
+        .btn-primary:hover { background: linear-gradient(135deg, #0369a1, #0284c7); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(2,132,199,0.3); }
+        .btn-success { background: linear-gradient(135deg, #059669, #047857); color: white; font-weight: 600; padding: 10px 18px; border-radius: 8px; transition: all 0.2s; font-size: 13px; border: none; cursor: pointer; }
+        .btn-success:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(5,150,105,0.3); }
+        .btn-danger { background: linear-gradient(135deg, #d97706, #b45309); color: white; font-weight: 600; padding: 10px 18px; border-radius: 8px; transition: all 0.2s; font-size: 13px; border: none; cursor: pointer; }
+        .btn-danger:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(217,119,6,0.3); }
+        .btn-ghost { background: rgba(255,255,255,0.04); color: #64748b; font-weight: 500; padding: 10px 18px; border-radius: 8px; transition: all 0.2s; font-size: 13px; border: 1px solid rgba(255,255,255,0.08); cursor: pointer; }
+        .btn-ghost:hover { color: #94a3b8; background: rgba(255,255,255,0.08); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+
+        /* Animations */
+        @keyframes pulse-amber { 0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(245,158,11,0.4)} 50%{opacity:.85;box-shadow:0 0 0 4px rgba(245,158,11,0)} }
+        @keyframes scan-line { 0%{transform:translateY(-100%)} 100%{transform:translateY(400px)} }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+        .pulse-amber { animation: pulse-amber 2s ease infinite; }
+        .fade-in { animation: fadeIn 0.25s ease forwards; }
         .hidden { display: none !important; }
-        .tab-active { background-color: #0ea5e9; color: white; border-color: #38bdf8; }
-        .tab-inactive { background-color: #1e293b; color: #94a3b8; border-color: #334155; }
-        @keyframes pulse-red { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }
-        .badge-active { animation: pulse-red 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-        .governance-hardened { border: 1px solid #f59e0b !important; box-shadow: 0 0 20px rgba(245, 158, 11, 0.3) !important; }
+
+        /* Connection tab pills */
+        .conn-tab { display:inline-flex; align-items:center; gap:8px; padding:6px 14px; border-radius:20px; border:1px solid; font-size:12px; font-weight:600; cursor:pointer; transition:all .2s; white-space:nowrap; }
+        .conn-tab-active { background:rgba(56,189,248,0.1); border-color:rgba(56,189,248,0.4); color:#38bdf8; }
+        .conn-tab-inactive { background:rgba(255,255,255,0.03); border-color:rgba(255,255,255,0.08); color:#475569; }
+        .conn-tab-inactive:hover { border-color:rgba(255,255,255,0.16); color:#64748b; }
+
+        /* KPI Card glow */
+        .kpi-blue { box-shadow: 0 0 30px rgba(59,130,246,0.08); }
+        .kpi-amber { box-shadow: 0 0 30px rgba(245,158,11,0.08); }
+        .kpi-rose  { box-shadow: 0 0 30px rgba(244,63,94,0.08); }
+
+        /* Status badge */
+        .badge-active { animation: pulse-amber 2s infinite; }
+        .governance-hardened { border-color: rgba(245,158,11,0.5) !important; box-shadow: 0 0 30px rgba(245,158,11,0.15) !important; }
+        .rule-row { display:flex; gap:8px; align-items:center; }
+
+        /* Scan effect on header */
+        .header-scan { position:relative; overflow:hidden; }
+        .header-scan::after { content:''; position:absolute; top:0; left:0; right:0; height:1px; background:linear-gradient(90deg,transparent,rgba(56,189,248,.6),transparent); animation:scan-line 3s linear infinite; }
     </style>
 </head>
-<body class="min-h-screen p-6">
-    <!-- Navbar -->
-    <nav class="flex justify-between items-center mb-4 glass-panel p-4">
-        <div class="flex items-center space-x-3">
-            <div class="w-10 h-10 bg-cyan-500 rounded-lg flex items-center justify-center font-bold text-xl">S</div>
-            <h1 class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500">
-                SecOps Universal Monitor
-            </h1>
-        </div>
-        <div class="flex items-center space-x-3">
-            <div id="sdm-badge" class="hidden px-3 py-1 rounded-full text-xs font-bold flex items-center space-x-1 badge-active bg-amber-500/20 border border-amber-500 text-amber-400">
-                <span class="w-2 h-2 bg-amber-400 rounded-full inline-block"></span>
-                <span>MODO HARDENED</span>
+<body class="flex">
+
+<!-- ══════════════════════════════════════════════════════════
+     SIDEBAR
+══════════════════════════════════════════════════════════ -->
+<aside id="sidebar" class="w-56 flex-shrink-0 flex flex-col h-screen sticky top-0">
+    <!-- Logo -->
+    <div class="px-4 py-5 border-b border-white/5 header-scan">
+        <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:linear-gradient(135deg,#0284c7,#6366f1)">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                </svg>
             </div>
-            <button onclick="logout()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors text-sm font-medium">
-                Cerrar Sesión
-            </button>
+            <div>
+                <div class="text-xs font-bold text-sky-400 leading-none">SecOps</div>
+                <div class="text-xs text-slate-600 leading-none mt-0.5">Universal Monitor</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <div class="text-xs font-semibold text-slate-700 uppercase tracking-widest px-3 mb-3">Panel</div>
+
+        <div class="nav-item active" id="nav-dashboard" onclick="navigate('dashboard')">
+            <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+            <span>Dashboard</span>
+        </div>
+
+        <div class="nav-item" id="nav-connections" onclick="navigate('connections')">
+            <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"/></svg>
+            <span>Conexiones</span>
+            <span id="conn-counter" class="ml-auto text-xs bg-sky-500/20 text-sky-400 border border-sky-500/30 rounded-full px-1.5 py-0.5 hidden mono">0</span>
+        </div>
+
+        <div class="nav-item" id="nav-masking" onclick="navigate('masking')">
+            <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+            <span>Enmascaramiento</span>
+        </div>
+
+        <div class="nav-item" id="nav-monitor" onclick="navigate('monitor')">
+            <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+            <span>Monitor</span>
+        </div>
+
+        <div class="nav-item" id="nav-governance" onclick="navigate('governance')">
+            <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+            <span>Bóveda SDM</span>
+            <span id="sdm-badge" class="hidden ml-auto w-2 h-2 bg-amber-400 rounded-full pulse-amber"></span>
         </div>
     </nav>
 
-    <!-- Context Bar (Tabs) -->
-    <div class="mb-6 flex space-x-2 overflow-x-auto pb-2" id="tabs-container">
-        <!-- Tabs dinámicos -->
+    <!-- Bottom: User + Logout -->
+    <div class="px-3 py-4 border-t border-white/5">
+        <div class="flex items-center gap-3 mb-3 px-1">
+            <div id="user-avatar" class="w-7 h-7 rounded-full bg-gradient-to-br from-sky-500 to-indigo-500 flex items-center justify-center text-xs font-bold text-white">?</div>
+            <div class="min-w-0">
+                <div id="user-name" class="text-xs font-semibold text-slate-300 truncate">Cargando...</div>
+                <div id="user-email" class="text-xs text-slate-600 truncate">—</div>
+            </div>
+        </div>
+        <button onclick="logout()" class="w-full nav-item justify-center text-rose-500/70 hover:text-rose-400 hover:bg-rose-500/10 border-rose-500/0 hover:border-rose-500/20">
+            <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+            <span>Cerrar Sesión</span>
+        </button>
+    </div>
+</aside>
+
+<!-- ══════════════════════════════════════════════════════════
+     MAIN CONTENT
+══════════════════════════════════════════════════════════ -->
+<main id="main-content" class="flex-1 p-6 space-y-6">
+
+    <!-- Topbar -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 id="page-title" class="text-xl font-bold text-slate-100">Dashboard General</h2>
+            <p id="page-subtitle" class="text-xs text-slate-500 mt-0.5">Resumen del estado del sistema SecOps</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <div id="sdm-badge-top" class="hidden flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 pulse-amber">
+                <span class="w-1.5 h-1.5 bg-amber-400 rounded-full"></span>
+                <span class="text-xs font-bold text-amber-400 mono">MODO HARDENED</span>
+            </div>
+            <div class="text-xs text-slate-600 mono" id="clock"></div>
+        </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        <!-- PANEL IZQUIERDO: CONTROLES -->
-        <div class="lg:col-span-4 space-y-6">
-            
-            <!-- FORMULARIO DE CONEXIÓN (Múltiples) -->
-            <div id="view-connect" class="glass-panel p-6">
-                <h2 class="text-xl font-bold mb-4 flex items-center"><span class="bg-blue-500 text-xs rounded-full w-6 h-6 flex items-center justify-center mr-2">+</span> Nueva Conexión</h2>
-                
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm text-slate-400 mb-1">Alias (Para identificarla)</label>
-                        <input type="text" id="conn-alias" placeholder="Ej: MySQL Producción" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-cyan-500">
-                    </div>
-                    
-                    <div>
-                        <label class="block text-sm text-slate-400 mb-1">Motor</label>
-                        <select id="conn-motor" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-cyan-500 outline-none" onchange="toggleFormFields()">
-                            <option value="sqlite">SQLite (Local DB)</option>
-                            <option value="postgres">PostgreSQL</option>
-                            <option value="mysql">MySQL</option>
-                            <option value="sqlserver">SQL Server</option>
-                            <option value="mongodb">MongoDB</option>
-                            <option value="redis">Redis</option>
-                            <option value="neo4j">Neo4j</option>
-                        </select>
-                    </div>
+    <!-- Connection Context Bar (global, always visible when connections exist) -->
+    <div id="tabs-container" class="flex flex-wrap gap-2 hidden"></div>
 
-                    <!-- Campos dinámicos -->
-                    <div id="field-host" class="hidden">
-                        <label class="block text-sm text-slate-400 mb-1">Host / URI</label>
-                        <input type="text" id="conn-host" placeholder="localhost" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 outline-none">
-                    </div>
-                    
-                    <div id="field-port" class="hidden">
-                        <label class="block text-sm text-slate-400 mb-1">Puerto</label>
-                        <input type="number" id="conn-port" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 outline-none">
-                    </div>
-                    
-                    <div id="field-credentials" class="hidden space-y-4">
-                        <div>
-                            <label class="block text-sm text-slate-400 mb-1">Usuario</label>
-                            <input type="text" id="conn-user" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 outline-none">
-                        </div>
-                        <div>
-                            <label class="block text-sm text-slate-400 mb-1">Contraseña</label>
-                            <input type="password" id="conn-pass" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 outline-none">
-                        </div>
-                    </div>
 
+    <!-- ══════ VISTA: DASHBOARD ══════ -->
+    <section id="view-dashboard" class="fade-in space-y-6">
+        <!-- Quick Stats -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="glass p-5">
+                <p class="text-xs text-slate-500 font-semibold uppercase tracking-wider">Conexiones Activas</p>
+                <p id="stat-connections" class="text-3xl font-bold text-sky-400 mt-2 mono">0</p>
+                <p class="text-xs text-slate-600 mt-1">Bases de datos en sesión</p>
+            </div>
+            <div class="glass p-5">
+                <p class="text-xs text-slate-500 font-semibold uppercase tracking-wider">Último Overhead</p>
+                <p id="stat-overhead" class="text-3xl font-bold text-amber-400 mt-2 mono">— ms</p>
+                <p class="text-xs text-slate-600 mt-1">Capa de seguridad</p>
+            </div>
+            <div class="glass p-5">
+                <p class="text-xs text-slate-500 font-semibold uppercase tracking-wider">Reglas Activas</p>
+                <p id="stat-rules" class="text-3xl font-bold text-violet-400 mt-2 mono">0</p>
+                <p class="text-xs text-slate-600 mt-1">Columnas protegidas</p>
+            </div>
+            <div class="glass p-5">
+                <p class="text-xs text-slate-500 font-semibold uppercase tracking-wider">Estado SDM</p>
+                <p id="stat-sdm" class="text-3xl font-bold text-emerald-400 mt-2 mono">OK</p>
+                <p class="text-xs text-slate-600 mt-1">Gobernanza de datos</p>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="glass p-6">
+            <h3 class="text-sm font-semibold text-slate-300 mb-4">Acciones Rápidas</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <button onclick="navigate('connections')" class="flex items-center gap-3 p-4 rounded-lg bg-sky-500/5 border border-sky-500/20 hover:bg-sky-500/10 transition-all text-left">
+                    <div class="w-10 h-10 rounded-lg bg-sky-500/20 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                    </div>
                     <div>
-                        <label class="block text-sm text-slate-400 mb-1">Nombre Base de Datos</label>
-                        <input type="text" id="conn-db" placeholder="Opcional en Redis/Neo4j" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 outline-none">
+                        <div class="text-sm font-semibold text-slate-200">Nueva Conexión</div>
+                        <div class="text-xs text-slate-500">Conectar base de datos</div>
                     </div>
+                </button>
+                <button onclick="navigate('masking')" class="flex items-center gap-3 p-4 rounded-lg bg-violet-500/5 border border-violet-500/20 hover:bg-violet-500/10 transition-all text-left">
+                    <div class="w-10 h-10 rounded-lg bg-violet-500/20 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+                    </div>
+                    <div>
+                        <div class="text-sm font-semibold text-slate-200">Configurar Reglas</div>
+                        <div class="text-xs text-slate-500">Políticas de enmascaramiento</div>
+                    </div>
+                </button>
+                <button onclick="navigate('governance')" class="flex items-center gap-3 p-4 rounded-lg bg-amber-500/5 border border-amber-500/20 hover:bg-amber-500/10 transition-all text-left">
+                    <div class="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                    </div>
+                    <div>
+                        <div class="text-sm font-semibold text-slate-200">Bóveda SDM</div>
+                        <div class="text-xs text-slate-500">Protección de datos reales</div>
+                    </div>
+                </button>
+            </div>
+        </div>
 
-                    <button onclick="conectarDB()" id="btn-connect" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded-lg transition-colors mt-2">
-                        Conectar e Introspeccionar
-                    </button>
-                    <p id="connect-status" class="text-sm mt-2 text-center"></p>
+        <!-- Status Grid -->
+        <div class="glass p-6">
+            <h3 class="text-sm font-semibold text-slate-300 mb-4">Motores Soportados</h3>
+            <div class="grid grid-cols-3 sm:grid-cols-7 gap-3">
+                <template id="db-engines-tpl">
+                    <div class="flex flex-col items-center gap-2 p-3 rounded-lg bg-white/2 border border-white/5">
+                        <div class="w-2 h-2 rounded-full bg-slate-600"></div>
+                        <span class="text-xs text-slate-500 mono">PG</span>
+                    </div>
+                </template>
+            </div>
+            <div id="engine-grid" class="grid grid-cols-3 sm:grid-cols-7 gap-3">
+                <!-- rendered by JS -->
+            </div>
+        </div>
+    </section>
+
+
+    <!-- ══════ VISTA: CONEXIONES ══════ -->
+    <section id="view-connections" class="hidden fade-in space-y-6">
+        <!-- New Connection Form -->
+        <div id="view-connect" class="glass p-6">
+            <h3 class="text-base font-semibold text-slate-200 mb-5 flex items-center gap-2">
+                <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                Nueva Conexión de Base de Datos
+            </h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                    <label class="field-label">Alias</label>
+                    <input type="text" id="conn-alias" placeholder="Ej: MySQL Producción" class="input-field">
+                </div>
+                <div>
+                    <label class="field-label">Motor</label>
+                    <select id="conn-motor" class="input-field" onchange="toggleFormFields()">
+                        <option value="sqlite">SQLite (Local)</option>
+                        <option value="postgres">PostgreSQL</option>
+                        <option value="mysql">MySQL</option>
+                        <option value="sqlserver">SQL Server</option>
+                        <option value="mongodb">MongoDB</option>
+                        <option value="redis">Redis</option>
+                        <option value="neo4j">Neo4j</option>
+                    </select>
+                </div>
+                <div id="field-host">
+                    <label class="field-label">Host / URI</label>
+                    <input type="text" id="conn-host" placeholder="localhost" class="input-field">
+                </div>
+                <div id="field-port">
+                    <label class="field-label">Puerto</label>
+                    <input type="number" id="conn-port" class="input-field">
+                </div>
+                <div>
+                    <label class="field-label">Base de Datos</label>
+                    <input type="text" id="conn-db" placeholder="Nombre de la BD" class="input-field">
+                </div>
+                <div id="field-credentials" class="sm:col-span-2 lg:col-span-1 grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="field-label">Usuario</label>
+                        <input type="text" id="conn-user" class="input-field">
+                    </div>
+                    <div>
+                        <label class="field-label">Contraseña</label>
+                        <input type="password" id="conn-pass" class="input-field">
+                    </div>
                 </div>
             </div>
+            <div class="flex items-center gap-4 mt-5">
+                <button onclick="conectarDB()" id="btn-connect" class="btn-primary">
+                    Conectar e Introspeccionar
+                </button>
+                <p id="connect-status" class="text-sm text-slate-500"></p>
+            </div>
+        </div>
 
-            <!-- VISTA DE REGLAS DE ENMASCARAMIENTO (Depende del contexto activo) -->
-            <div id="view-rules" class="glass-panel p-6 hidden">
-                <h2 class="text-xl font-bold mb-4 flex items-center text-cyan-400" id="rules-title">Reglas de Enmascaramiento</h2>
-                
+        <!-- Active Connections List -->
+        <div class="glass p-6">
+            <h3 class="text-base font-semibold text-slate-200 mb-4 flex items-center gap-2">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"/></svg>
+                Conexiones Activas de esta Sesión
+            </h3>
+            <div id="active-connections-list" class="space-y-2">
+                <p class="text-xs text-slate-600 italic">Sin conexiones activas. Usa el formulario superior para conectar una base de datos.</p>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- ══════ VISTA: ENMASCARAMIENTO ══════ -->
+    <section id="view-masking" class="hidden fade-in space-y-6">
+        <div id="view-rules" class="glass p-6">
+            <h3 class="text-base font-semibold mb-5 flex items-center justify-between">
+                <span class="flex items-center gap-2 text-slate-200">
+                    <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+                    <span id="rules-title">Políticas de Enmascaramiento</span>
+                </span>
+            </h3>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Table selector -->
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-sm text-slate-400 mb-1">Seleccionar Tabla/Colección</label>
-                        <select id="rule-table" onchange="cargarColumnas()" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 outline-none">
-                            <option value="">-- Selecciona --</option>
+                        <label class="field-label">Seleccionar Tabla / Colección</label>
+                        <select id="rule-table" onchange="cargarColumnas()" class="input-field">
+                            <option value="">— Conecta una BD primero —</option>
                         </select>
                     </div>
-
-                    <div class="border border-slate-700 rounded-lg p-3 bg-slate-800/50">
-                        <h3 class="text-sm font-semibold text-slate-300 mb-2">Construir Reglas</h3>
-                        <div id="rules-container" class="space-y-2 mb-3">
-                            <!-- Filas dinámicas -->
+                    <div class="border border-white/5 rounded-lg p-4 bg-black/20">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Reglas de Columna</span>
+                            <button onclick="agregarFilaRegla()" class="text-xs text-sky-400 hover:text-sky-300 transition-colors">+ Añadir</button>
                         </div>
-                        <button onclick="agregarFilaRegla()" class="text-sm text-cyan-400 hover:text-cyan-300 flex items-center">
-                            + Añadir columna protegida
-                        </button>
+                        <div id="rules-container" class="space-y-2"></div>
                     </div>
-
-                    <button onclick="ejecutarPrueba()" id="btn-execute" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-lg transition-colors mt-4 shadow-lg shadow-emerald-500/20">
-                        ▶ Ejecutar Prueba y Medir
+                    <button onclick="ejecutarPrueba()" id="btn-execute" class="w-full btn-success flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        Ejecutar y Medir
                     </button>
-                    <p id="execute-status" class="text-sm mt-2 text-center"></p>
+                    <p id="execute-status" class="text-xs text-center text-slate-500"></p>
+                </div>
+
+                <!-- Data preview -->
+                <div class="lg:col-span-2">
+                    <label class="field-label">Vista Previa de Datos (LIMIT 100)</label>
+                    <div class="h-80 overflow-auto rounded-lg bg-black/40 border border-white/5 p-3">
+                        <pre id="data-preview" class="text-xs text-slate-400 mono whitespace-pre-wrap">Los datos procesados aparecerán aquí...</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- ══════ VISTA: MONITOR ══════ -->
+    <section id="view-monitor" class="hidden fade-in space-y-6">
+        <!-- KPI Row -->
+        <div class="grid grid-cols-3 gap-5">
+            <div class="glass kpi-blue p-6 flex flex-col items-center">
+                <p class="text-xs text-slate-500 font-semibold uppercase tracking-wider">Tiempo Base (DB)</p>
+                <p id="kpi-db" class="text-4xl font-bold text-blue-400 mt-3 mono">0 ms</p>
+                <p class="text-xs text-slate-600 mt-2">Latencia de consulta nativa</p>
+            </div>
+            <div class="glass kpi-amber p-6 flex flex-col items-center">
+                <p class="text-xs text-slate-500 font-semibold uppercase tracking-wider">Overhead Seguridad</p>
+                <p id="kpi-sec" class="text-4xl font-bold text-amber-400 mt-3 mono">0 ms</p>
+                <p class="text-xs text-slate-600 mt-2">Costo de enmascaramiento</p>
+            </div>
+            <div class="glass kpi-rose p-6 flex flex-col items-center">
+                <p class="text-xs text-slate-500 font-semibold uppercase tracking-wider">Latencia Total</p>
+                <p id="kpi-total" class="text-4xl font-bold text-rose-400 mt-3 mono">0 ms</p>
+                <p class="text-xs text-slate-600 mt-2">DB + Capa de seguridad</p>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <div class="glass p-6">
+                <h3 class="text-sm font-semibold text-slate-300 mb-5">Impacto Comparativo en Latencia</h3>
+                <div class="h-64 relative">
+                    <canvas id="latencyChart"></canvas>
+                </div>
+            </div>
+            <div class="glass p-6">
+                <h3 class="text-sm font-semibold text-slate-300 mb-5">Distribución del Tiempo de Respuesta</h3>
+                <div class="h-64 relative">
+                    <canvas id="pieChart"></canvas>
                 </div>
             </div>
         </div>
 
-        <!-- PANEL DERECHO: MÉTRICAS Y RESULTADOS -->
-        <div class="lg:col-span-8 space-y-6">
-            <!-- KPIs -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div class="glass-panel p-6 flex flex-col justify-center items-center">
-                    <p class="text-slate-400 text-sm font-medium">Tiempo Base (DB)</p>
-                    <p id="kpi-db" class="text-3xl font-bold text-blue-400 mt-2">0 ms</p>
-                </div>
-                <div class="glass-panel p-6 flex flex-col justify-center items-center">
-                    <p class="text-slate-400 text-sm font-medium">Overhead Seguridad</p>
-                    <p id="kpi-sec" class="text-3xl font-bold text-amber-400 mt-2">0 ms</p>
-                </div>
-                <div class="glass-panel p-6 flex flex-col justify-center items-center">
-                    <p class="text-slate-400 text-sm font-medium">Latencia Total</p>
-                    <p id="kpi-total" class="text-3xl font-bold text-rose-400 mt-2">0 ms</p>
-                </div>
-            </div>
+        <!-- Advice -->
+        <div class="glass p-5 border-l-4 border-violet-500">
+            <p class="text-sm text-slate-300 font-semibold mb-1">Interpretación del Overhead</p>
+            <p class="text-xs text-slate-500 leading-relaxed">El overhead real mide cuánto tiempo adicional introduce la capa de seguridad. <strong class="text-violet-400">Redacción</strong> es prácticamente gratuita (~0ms), <strong class="text-amber-400">FPE simulado</strong> puede añadir 100-500ms. Usa esta gráfica para justificar la elección del algoritmo según los SLA de tu aplicación.</p>
+        </div>
+    </section>
 
-            <!-- Gráfico y Datos -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[500px]">
-                <div class="glass-panel p-4 flex flex-col">
-                    <h3 class="text-lg font-semibold mb-4 text-slate-200">Impacto en Latencia</h3>
-                    <div class="flex-grow relative w-full h-full">
-                        <canvas id="latencyChart"></canvas>
-                    </div>
-                </div>
-                <div class="glass-panel p-4 flex flex-col">
-                    <h3 class="text-lg font-semibold mb-4 text-slate-200">Vista Previa de Datos (Limit 100)</h3>
-                    <div class="overflow-auto flex-grow bg-slate-900 rounded-lg p-2 border border-slate-700">
-                        <pre id="data-preview" class="text-xs text-slate-300 font-mono"></pre>
-                    </div>
-                </div>
-            </div>
 
-            <!-- PANEL DE GOBERNANZA SDM -->
-            <div id="governance-panel" class="glass-panel p-6 hidden">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-semibold text-amber-400 flex items-center">
-                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-                        Control de Gobernanza (SDM)
+    <!-- ══════ VISTA: GOBERNANZA SDM ══════ -->
+    <section id="view-governance" class="hidden fade-in space-y-6">
+        <div id="governance-panel" class="glass p-6">
+            <!-- Header -->
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h3 class="text-base font-semibold text-amber-400 flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                        Bóveda de Gobernanza — Static Data Masking
                     </h3>
-                    <div id="sdm-status-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-slate-700 text-slate-400 border border-slate-600">
-                        INACTIVA
-                    </div>
+                    <p class="text-xs text-slate-500 mt-1">Protección permanente de datos en reposo contra acceso directo no autorizado</p>
                 </div>
+                <div id="sdm-status-badge" class="px-3 py-1 rounded-full text-xs font-bold mono bg-slate-800 text-slate-500 border border-slate-700">
+                    INACTIVA
+                </div>
+            </div>
 
-                <p class="text-xs text-slate-400 mb-4 leading-relaxed">
-                    El <strong class="text-slate-200">Static Data Masking</strong> sobreescribe los datos reales en la base de datos con sus versiones enmascaradas. El backup original queda cifrado con AES-256. Un <code>SELECT *</code> directo a la BD solo revelara datos protegidos.
-                </p>
+            <!-- Threat Model -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                <div class="rounded-lg p-4 bg-rose-500/5 border border-rose-500/20">
+                    <div class="text-xs font-bold text-rose-400 uppercase tracking-wider mb-2">Sin SDM</div>
+                    <p class="text-xs text-slate-500"><code class="text-rose-300 mono">SELECT * FROM t</code> expone datos reales en texto plano</p>
+                </div>
+                <div class="rounded-lg p-4 bg-emerald-500/5 border border-emerald-500/20">
+                    <div class="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2">Con SDM Activo</div>
+                    <p class="text-xs text-slate-500"><code class="text-emerald-300 mono">SELECT *</code> retorna solo valores enmascarados permanentemente</p>
+                </div>
+                <div class="rounded-lg p-4 bg-amber-500/5 border border-amber-500/20">
+                    <div class="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2">Backup AES-256</div>
+                    <p class="text-xs text-slate-500">Originales cifrados con Fernet, indescifrables sin el <code class="text-amber-300 mono">.keyfile</code></p>
+                </div>
+            </div>
 
-                <div class="grid grid-cols-2 gap-3">
-                    <button id="btn-protect" onclick="activarProteccion()" class="bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 px-4 rounded-lg transition-all text-sm flex items-center justify-center space-x-2">
+            <!-- Controls -->
+            <div class="border border-white/5 rounded-lg p-5 bg-black/20">
+                <label class="field-label mb-3">Tabla objetivo (usa el selector de Enmascaramiento)</label>
+                <div id="gov-current-table" class="text-sm text-slate-400 mono mb-4 px-3 py-2 bg-black/30 rounded border border-white/5">
+                    — Selecciona una tabla en "Políticas de Enmascaramiento" primero —
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button id="btn-protect" onclick="activarProteccion()" class="btn-danger flex items-center justify-center gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                        <span>Proteger BD (SDM)</span>
+                        Activar Protección SDM
                     </button>
-                    <button id="btn-restore" onclick="restaurarDatos()" class="bg-slate-600 hover:bg-slate-500 text-white font-bold py-3 px-4 rounded-lg transition-all text-sm flex items-center justify-center space-x-2">
+                    <button id="btn-restore" onclick="restaurarDatos()" class="btn-ghost flex items-center justify-center gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                        <span>Revertir a Originales</span>
+                        Revertir a Datos Originales
                     </button>
                 </div>
-                <p id="governance-status" class="text-xs mt-3 text-center text-slate-400"></p>
+                <p id="governance-status" class="text-xs mt-3 text-center text-slate-500"></p>
             </div>
         </div>
-    </div>
+    </section>
 
-    <script>
-        let schemaCache = {};
-        let myChart = null;
-        let activeConnectionId = null;
-        let sdmEstadoActual = "INACTIVA";
+</main>
 
-        document.addEventListener("DOMContentLoaded", () => {
-            toggleFormFields();
-            initChart();
-            fetchConnections();
-        });
+<!-- ══════════════════════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════════════════════ -->
+<script>
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let schemaCache = {};
+let activeConnectionId = null;
+let sdmEstadoActual = "INACTIVA";
+let lastMetrics = { db: 0, sec: 0 };
+let myBarChart = null;
+let myPieChart = null;
+const SECTIONS = ['dashboard','connections','masking','monitor','governance'];
+const ENGINE_META = {
+    postgres:  { label:'PostgreSQL', color:'#3b82f6' },
+    mysql:     { label:'MySQL',      color:'#f59e0b' },
+    sqlserver: { label:'SQL Server', color:'#ef4444' },
+    sqlite:    { label:'SQLite',     color:'#8b5cf6' },
+    mongodb:   { label:'MongoDB',    color:'#10b981' },
+    redis:     { label:'Redis',      color:'#f43f5e' },
+    neo4j:     { label:'Neo4j',      color:'#06b6d4' },
+};
 
-        function toggleFormFields() {
-            const motor = document.getElementById("conn-motor").value;
-            const host = document.getElementById("field-host");
-            const port = document.getElementById("field-port");
-            const creds = document.getElementById("field-credentials");
+// ─── CLOCK ────────────────────────────────────────────────────────────────────
+function updateClock() {
+    document.getElementById('clock').textContent = new Date().toLocaleTimeString('es-MX',{hour12:false});
+}
+setInterval(updateClock, 1000);
+updateClock();
 
-            if (motor === "sqlite") {
-                host.classList.add("hidden");
-                port.classList.add("hidden");
-                creds.classList.add("hidden");
-                document.getElementById("conn-db").value = "local_monitor.db";
-                document.getElementById("conn-alias").value = "SQLite Local";
+// ─── NAVIGATION ───────────────────────────────────────────────────────────────
+const PAGE_META = {
+    dashboard:   ['Dashboard General','Resumen del estado del sistema SecOps'],
+    connections: ['Gestión de Conexiones','Administra tus bases de datos conectadas'],
+    masking:     ['Políticas de Enmascaramiento','Configura y aplica reglas de seguridad por columna'],
+    monitor:     ['Monitor de Overhead','Métricas de rendimiento en tiempo real'],
+    governance:  ['Bóveda de Gobernanza (SDM)','Static Data Masking — protección permanente'],
+};
+
+function navigate(target) {
+    SECTIONS.forEach(id => {
+        const el = document.getElementById('view-' + id);
+        const nav = document.getElementById('nav-' + id);
+        if (id === target) {
+            el.classList.remove('hidden');
+            el.classList.add('fade-in');
+            nav.classList.add('active');
+        } else {
+            el.classList.add('hidden');
+            el.classList.remove('fade-in');
+            nav.classList.remove('active');
+        }
+    });
+    const [title, sub] = PAGE_META[target];
+    document.getElementById('page-title').textContent = title;
+    document.getElementById('page-subtitle').textContent = sub;
+
+    // When navigating to governance, show current table
+    if (target === 'governance') {
+        const t = document.getElementById('rule-table').value;
+        document.getElementById('gov-current-table').textContent = t || '— Selecciona una tabla en "Políticas de Enmascaramiento" primero —';
+        if (t) actualizarBadgeEstado(t);
+    }
+}
+
+// ─── ENGINE GRID ──────────────────────────────────────────────────────────────
+function renderEngineGrid() {
+    const grid = document.getElementById('engine-grid');
+    grid.innerHTML = '';
+    Object.entries(ENGINE_META).forEach(([key, meta]) => {
+        const div = document.createElement('div');
+        div.className = 'flex flex-col items-center gap-2 p-3 rounded-lg bg-white/2 border border-white/5';
+        div.innerHTML = `
+            <div class="w-2 h-2 rounded-full" style="background:${meta.color}"></div>
+            <span class="text-xs text-slate-500 mono">${key.toUpperCase()}</span>
+        `;
+        grid.appendChild(div);
+    });
+}
+
+// ─── FORM FIELDS ──────────────────────────────────────────────────────────────
+function toggleFormFields() {
+    const motor = document.getElementById('conn-motor').value;
+    const isSqlite = motor === 'sqlite';
+    document.getElementById('field-host').classList.toggle('hidden', isSqlite);
+    document.getElementById('field-port').classList.toggle('hidden', isSqlite);
+    document.getElementById('field-credentials').classList.toggle('hidden', isSqlite);
+    if (isSqlite) {
+        document.getElementById('conn-db').value = 'local_monitor.db';
+        document.getElementById('conn-alias').value = 'SQLite Local';
+    } else {
+        document.getElementById('conn-db').value = '';
+        document.getElementById('conn-alias').value = motor.toUpperCase() + ' Server';
+        const ports = {postgres:5432, mysql:3306, sqlserver:1433, mongodb:27017, redis:6379, neo4j:7687};
+        document.getElementById('conn-port').value = ports[motor] || '';
+        document.getElementById('conn-host').placeholder = motor === 'mongodb' ? 'mongodb://localhost:27017/' : 'localhost';
+    }
+}
+
+// ─── CONNECTIONS ──────────────────────────────────────────────────────────────
+async function fetchConnections() {
+    try {
+        const res = await fetch('/api/v1/connections');
+        if (res.status === 401) { window.location.href = '/login'; return; }
+        if (res.ok) {
+            const data = await res.json();
+            const conns = data.conexiones || [];
+            renderContextTabs(conns);
+            renderActiveConnectionsList(conns);
+            // Update counter badge in sidebar
+            const counter = document.getElementById('conn-counter');
+            if (conns.length > 0) {
+                counter.textContent = conns.length;
+                counter.classList.remove('hidden');
             } else {
-                host.classList.remove("hidden");
-                port.classList.remove("hidden");
-                creds.classList.remove("hidden");
-                document.getElementById("conn-db").value = "";
-                document.getElementById("conn-alias").value = motor.toUpperCase() + " Server";
-                
-                const ports = { "postgres": 5432, "mysql": 3306, "sqlserver": 1433, "mongodb": 27017, "redis": 6379, "neo4j": 7687 };
-                document.getElementById("conn-port").value = ports[motor] || "";
-                if(motor==="mongodb") document.getElementById("conn-host").placeholder = "mongodb://localhost:27017/";
-                else document.getElementById("conn-host").placeholder = "localhost";
+                counter.classList.add('hidden');
             }
+            document.getElementById('stat-connections').textContent = conns.length;
         }
+    } catch(e) { console.error('fetchConnections error', e); }
+}
 
-        async function fetchConnections() {
-            try {
-                const res = await fetch('/api/v1/connections');
-                if (res.ok) {
-                    const data = await res.json();
-                    renderTabs(data.conexiones);
-                } else if(res.status === 401) {
-                    window.location.href = '/login';
-                }
-            } catch (e) {
-                console.error("Error fetching connections", e);
-            }
+function renderContextTabs(conexiones) {
+    const container = document.getElementById('tabs-container');
+    if (conexiones.length === 0) {
+        container.classList.add('hidden');
+        return;
+    }
+    container.classList.remove('hidden');
+    container.innerHTML = '';
+
+    conexiones.forEach(conn => {
+        const isActive = conn.id === activeConnectionId;
+        const wrap = document.createElement('div');
+        wrap.className = 'conn-tab ' + (isActive ? 'conn-tab-active' : 'conn-tab-inactive');
+        const dot = ENGINE_META[conn.motor]?.color || '#64748b';
+        wrap.innerHTML = `
+            <span class="w-2 h-2 rounded-full flex-shrink-0" style="background:${dot}"></span>
+            <span onclick="selectConnection('${conn.id}','${conn.alias || conn.motor}')">${conn.alias || conn.motor}</span>
+            <button onclick="deleteConnection('${conn.id}')" class="text-slate-500 hover:text-rose-400 transition-colors ml-1 font-bold">×</button>
+        `;
+        container.appendChild(wrap);
+    });
+}
+
+function renderActiveConnectionsList(conexiones) {
+    const list = document.getElementById('active-connections-list');
+    if (!conexiones.length) {
+        list.innerHTML = '<p class="text-xs text-slate-600 italic">Sin conexiones activas.</p>';
+        return;
+    }
+    list.innerHTML = '';
+    conexiones.forEach(conn => {
+        const isActive = conn.id === activeConnectionId;
+        const meta = ENGINE_META[conn.motor] || {};
+        const div = document.createElement('div');
+        div.className = `flex items-center gap-3 p-3 rounded-lg border transition-all cursor-pointer ${isActive ? 'bg-sky-500/5 border-sky-500/20' : 'bg-white/2 border-white/5 hover:border-white/10'}`;
+        div.onclick = () => selectConnection(conn.id, conn.alias || conn.motor);
+        div.innerHTML = `
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${meta.color}22;border:1px solid ${meta.color}44">
+                <span class="text-xs font-bold mono" style="color:${meta.color}">${conn.motor.substring(0,2).toUpperCase()}</span>
+            </div>
+            <div class="flex-1 min-w-0">
+                <div class="text-sm font-semibold text-slate-200">${conn.alias || conn.motor}</div>
+                <div class="text-xs text-slate-500 mono">${conn.motor} · ${conn.id.substring(0,8)}...</div>
+            </div>
+            ${isActive ? '<span class="text-xs text-sky-400 font-semibold">Activa</span>' : ''}
+            <button onclick="event.stopPropagation(); deleteConnection('${conn.id}')" class="text-slate-600 hover:text-rose-400 transition-colors px-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        `;
+        list.appendChild(div);
+    });
+}
+
+async function selectConnection(conn_id, alias) {
+    activeConnectionId = conn_id;
+    fetchConnections();
+
+    try {
+        const res = await fetch(`/api/v1/schema?connection_id=${conn_id}`);
+        if (res.ok) {
+            const data = await res.json();
+            schemaCache = data.tablas || {};
+            popularTablas();
+            document.getElementById('rules-title').textContent = `Políticas: ${alias}`;
         }
+    } catch(e) { console.error('Schema error', e); }
+}
 
-        function renderTabs(conexiones) {
-            const container = document.getElementById("tabs-container");
-            container.innerHTML = "";
+async function deleteConnection(conn_id) {
+    await fetch(`/api/v1/connections/${conn_id}`, { method: 'DELETE' });
+    if (activeConnectionId === conn_id) {
+        activeConnectionId = null;
+        schemaCache = {};
+        popularTablas();
+    }
+    fetchConnections();
+}
 
-            // Botón Agregar
-            const btnAdd = document.createElement("button");
-            btnAdd.onclick = () => showConnectForm();
-            btnAdd.className = `px-4 py-2 border rounded-full text-sm font-semibold transition-colors flex items-center whitespace-nowrap ${!activeConnectionId ? 'tab-active' : 'tab-inactive hover:bg-slate-700'}`;
-            btnAdd.innerHTML = `+ Nueva Conexión`;
-            container.appendChild(btnAdd);
+async function conectarDB() {
+    const btn = document.getElementById('btn-connect');
+    const status = document.getElementById('connect-status');
+    btn.textContent = 'Conectando...';
+    btn.disabled = true;
+    status.textContent = '';
 
-            conexiones.forEach(conn => {
-                const tab = document.createElement("div");
-                const isActive = (conn.id === activeConnectionId);
-                tab.className = `px-4 py-2 border rounded-full text-sm font-semibold transition-colors flex items-center space-x-2 whitespace-nowrap cursor-pointer ${isActive ? 'tab-active' : 'tab-inactive hover:bg-slate-700'}`;
-                
-                const label = document.createElement("span");
-                label.innerText = conn.alias || conn.motor;
-                label.onclick = () => selectConnection(conn.id, conn.alias);
-                
-                const btnDel = document.createElement("button");
-                btnDel.innerText = "×";
-                btnDel.className = "text-rose-400 hover:text-rose-200 ml-2 font-bold text-lg leading-none";
-                btnDel.onclick = (e) => {
-                    e.stopPropagation();
-                    deleteConnection(conn.id);
-                };
-
-                tab.appendChild(label);
-                tab.appendChild(btnDel);
-                container.appendChild(tab);
-            });
+    const payload = {
+        motor: document.getElementById('conn-motor').value,
+        alias: document.getElementById('conn-alias').value,
+        credenciales: {
+            host: document.getElementById('conn-host').value,
+            port: document.getElementById('conn-port').value,
+            user: document.getElementById('conn-user').value,
+            password: document.getElementById('conn-pass').value,
+            database: document.getElementById('conn-db').value
         }
+    };
 
-        function showConnectForm() {
-            activeConnectionId = null;
-            document.getElementById("view-connect").classList.remove("hidden");
-            document.getElementById("view-rules").classList.add("hidden");
-            document.getElementById("governance-panel").classList.add("hidden");
-            limpiarMetricas();
-            fetchConnections();
-        }
-
-        async function selectConnection(conn_id, alias) {
-            activeConnectionId = conn_id;
-            document.getElementById("view-connect").classList.add("hidden");
-            document.getElementById("view-rules").classList.remove("hidden");
-            document.getElementById("governance-panel").classList.remove("hidden");
-            document.getElementById("rules-title").innerText = `Reglas: ${alias}`;
-            limpiarMetricas();
-            fetchConnections();
-
-            try {
-                const res = await fetch(`/api/v1/schema?connection_id=${conn_id}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    schemaCache = data.tablas || {};
-                    popularTablas();
-                } else {
-                    document.getElementById("rules-container").innerHTML = "<p class='text-rose-400'>Error cargando esquema.</p>";
-                }
-            } catch (e) {
-                console.error("Error schema", e);
-            }
-        }
-
-        async function deleteConnection(conn_id) {
-            try {
-                await fetch(`/api/v1/connections/${conn_id}`, { method: 'DELETE' });
-                if (activeConnectionId === conn_id) showConnectForm();
-                else fetchConnections();
-            } catch (e) { console.error("Error al borrar", e); }
-        }
-
-        async function conectarDB() {
-            const btn = document.getElementById("btn-connect");
-            const status = document.getElementById("connect-status");
-            btn.innerText = "Conectando...";
-            btn.disabled = true;
-
-            const payload = {
-                motor: document.getElementById("conn-motor").value,
-                alias: document.getElementById("conn-alias").value,
-                credenciales: {
-                    host: document.getElementById("conn-host").value,
-                    port: document.getElementById("conn-port").value,
-                    user: document.getElementById("conn-user").value,
-                    password: document.getElementById("conn-pass").value,
-                    database: document.getElementById("conn-db").value
-                }
-            };
-
-            try {
-                const response = await fetch('/api/v1/connect', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok) {
-                    status.innerText = "";
-                    // Auto-seleccionar la nueva conexión
-                    selectConnection(data.connection_id, data.alias);
-                } else {
-                    throw new Error(data.detail);
-                }
-            } catch (error) {
-                status.innerText = "❌ " + error.message;
-                status.classList.add("text-rose-400");
-            } finally {
-                btn.innerText = "Conectar e Introspeccionar";
-                btn.disabled = false;
-            }
-        }
-
-        function popularTablas() {
-            const select = document.getElementById("rule-table");
-            select.innerHTML = '<option value="">-- Selecciona --</option>';
-            for (const tabla in schemaCache) {
-                const opt = document.createElement("option");
-                opt.value = tabla;
-                opt.innerText = tabla;
-                select.appendChild(opt);
-            }
-            document.getElementById("rules-container").innerHTML = "";
-            document.getElementById("execute-status").innerText = "";
-        }
-
-        function cargarColumnas() {
-            document.getElementById("rules-container").innerHTML = "";
-            agregarFilaRegla();
-        }
-
-        function agregarFilaRegla() {
-            const tabla = document.getElementById("rule-table").value;
-            if (!tabla) return;
-            const columnas = schemaCache[tabla] || [];
-            const container = document.getElementById("rules-container");
-            const div = document.createElement("div");
-            div.className = "flex space-x-2 rule-row";
-            
-            let colsHtml = '<select class="rule-col w-1/2 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none">';
-            columnas.forEach(c => colsHtml += `<option value="${c}">${c}</option>`);
-            colsHtml += '</select>';
-            
-            div.innerHTML = `
-                ${colsHtml}
-                <select class="rule-algo w-1/2 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm outline-none">
-                    <option value="redaccion">Redacción (X)</option>
-                    <option value="hashing">Hashing Rápido</option>
-                    <option value="encriptacion">Encriptación Fuerte</option>
-                    <option value="fpe">FPE (Pesado)</option>
-                </select>
-                <button onclick="this.parentElement.remove()" class="text-rose-500 hover:text-rose-400 px-2">×</button>
-            `;
-            container.appendChild(div);
-        }
-
-        async function ejecutarPrueba() {
-            if (!activeConnectionId) return;
-            const tabla = document.getElementById("rule-table").value;
-            if (!tabla) { alert("Selecciona una tabla primero."); return; }
-
-            const btn = document.getElementById("btn-execute");
-            const status = document.getElementById("execute-status");
-            btn.innerText = "Procesando...";
-            btn.disabled = true;
-            status.innerText = "";
-
-            const reglas = {};
-            document.querySelectorAll(".rule-row").forEach(row => {
-                const col = row.querySelector(".rule-col").value;
-                const algo = row.querySelector(".rule-algo").value;
-                if(col) reglas[col] = algo;
-            });
-
-            try {
-                const response = await fetch('/api/v1/execute_test', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ connection_id: activeConnectionId, tabla: tabla, reglas: reglas })
-                });
-
-                if (response.status === 401) { window.location.href = "/login"; return; }
-                const data = await response.json();
-                
-                if(response.ok) actualizarMetricas(data);
-                else status.innerText = "❌ " + data.detail;
-            } catch (error) {
-                status.innerText = "❌ Error de conexión con API.";
-            } finally {
-                btn.innerText = "▶ Ejecutar Prueba y Medir";
-                btn.disabled = false;
-            }
-        }
-
-        function limpiarMetricas() {
-            document.getElementById("kpi-db").innerText = "0 ms";
-            document.getElementById("kpi-sec").innerText = "0 ms";
-            document.getElementById("kpi-total").innerText = "0 ms";
-            document.getElementById("data-preview").innerText = "";
-            myChart.data.datasets[0].data = [0, 0];
-            myChart.update();
-        }
-
-        function actualizarMetricas(data) {
-            document.getElementById("kpi-db").innerText = `${data.tiempo_bd_ms} ms`;
-            document.getElementById("kpi-sec").innerText = `${data.tiempo_enmascarado_ms} ms`;
-            document.getElementById("kpi-total").innerText = `${data.overhead_total_ms} ms`;
-            document.getElementById("data-preview").innerText = JSON.stringify(data.data, null, 2);
-            myChart.data.datasets[0].data = [data.tiempo_bd_ms, data.tiempo_enmascarado_ms];
-            myChart.update();
-        }
-
-        function initChart() {
-            const ctx = document.getElementById('latencyChart').getContext('2d');
-            myChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: ['Tiempo DB (Nativo)', 'Overhead SecOps'],
-                    datasets: [{
-                        label: 'Milisegundos (ms)',
-                        data: [0, 0],
-                        backgroundColor: ['rgba(59, 130, 246, 0.7)', 'rgba(245, 158, 11, 0.7)'],
-                        borderColor: ['#3b82f6', '#f59e0b'],
-                        borderWidth: 1,
-                        borderRadius: 4
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#cbd5e1' } }, x: { grid: { display: false }, ticks: { color: '#cbd5e1' } } } }
-            });
-        }
-
-        async function logout() {
-            await fetch('/api/logout', { method: 'POST' });
-            window.location.href = '/login';
-        }
-
-        // ─── GOBERNANZA SDM ───────────────────────────────────────────────
-
-        function _getReglasActuales() {
-            const tabla = document.getElementById("rule-table").value;
-            const reglas = {};
-            document.querySelectorAll(".rule-row").forEach(row => {
-                const col = row.querySelector(".rule-col")?.value;
-                const algo = row.querySelector(".rule-algo")?.value;
-                if (col) reglas[col] = algo;
-            });
-            return { tabla, reglas };
-        }
-
-        async function actualizarBadgeEstado(tabla) {
-            if (!activeConnectionId || !tabla) return;
-            try {
-                const res = await fetch(`/api/v1/governance/status?connection_id=${activeConnectionId}&tabla=${tabla}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    sdmEstadoActual = data.estado;
-                    const badge = document.getElementById("sdm-status-badge");
-                    const globalBadge = document.getElementById("sdm-badge");
-                    const govPanel = document.getElementById("governance-panel");
-
-                    if (data.estado === "ACTIVA") {
-                        badge.innerText = "ACTIVA";
-                        badge.className = "px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 border border-amber-500 text-amber-400 badge-active";
-                        globalBadge.classList.remove("hidden");
-                        govPanel.classList.add("governance-hardened");
-                    } else {
-                        badge.innerText = "INACTIVA";
-                        badge.className = "px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 border border-emerald-600 text-emerald-400";
-                        globalBadge.classList.add("hidden");
-                        govPanel.classList.remove("governance-hardened");
-                    }
-                }
-            } catch(e) { console.error(e); }
-        }
-
-        // Auto-actualizar badge cuando el usuario selecciona tabla
-        document.addEventListener("DOMContentLoaded", () => {
-            document.getElementById("rule-table").addEventListener("change", () => {
-                const tabla = document.getElementById("rule-table").value;
-                actualizarBadgeEstado(tabla);
-            });
+    try {
+        const res = await fetch('/api/v1/connect', {
+            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
         });
+        const data = await res.json();
+        if (res.ok) {
+            status.textContent = 'Conectado: ' + data.alias;
+            status.className = 'text-sm text-emerald-400';
+            await selectConnection(data.connection_id, data.alias);
+            fetchConnections();
+        } else {
+            throw new Error(data.detail);
+        }
+    } catch(err) {
+        status.textContent = 'Error: ' + err.message;
+        status.className = 'text-sm text-rose-400';
+    } finally {
+        btn.textContent = 'Conectar e Introspeccionar';
+        btn.disabled = false;
+    }
+}
 
-        async function activarProteccion() {
-            if (!activeConnectionId) { alert("Selecciona una conexion primero."); return; }
-            const { tabla, reglas } = _getReglasActuales();
-            if (!tabla) { alert("Selecciona una tabla para proteger."); return; }
-            if (Object.keys(reglas).length === 0) { alert("Define al menos una regla de enmascaramiento."); return; }
+// ─── MASKING RULES ────────────────────────────────────────────────────────────
+function popularTablas() {
+    const sel = document.getElementById('rule-table');
+    sel.innerHTML = '<option value="">— Selecciona tabla —</option>';
+    Object.keys(schemaCache).forEach(t => {
+        const o = document.createElement('option');
+        o.value = t; o.textContent = t;
+        sel.appendChild(o);
+    });
+    document.getElementById('rules-container').innerHTML = '';
+    document.getElementById('execute-status').textContent = '';
+}
 
-            const confirmado = confirm(
-                `ADVERTENCIA: Esta operacion sobreescribe los datos reales de la tabla '${tabla}' de forma permanente.\n\nSe creara un backup cifrado con AES-256 para recuperacion.\n\n¿Confirmas la activacion del Static Data Masking?`
-            );
-            if (!confirmado) return;
+function cargarColumnas() {
+    document.getElementById('rules-container').innerHTML = '';
+    agregarFilaRegla();
+    const tabla = document.getElementById('rule-table').value;
+    if (tabla) {
+        document.getElementById('gov-current-table').textContent = tabla;
+        actualizarBadgeEstado(tabla);
+    }
+}
 
-            const btn = document.getElementById("btn-protect");
-            const statusEl = document.getElementById("governance-status");
-            btn.innerText = "Protegiendo...";
-            btn.disabled = true;
+function agregarFilaRegla() {
+    const tabla = document.getElementById('rule-table').value;
+    if (!tabla) return;
+    const columnas = schemaCache[tabla] || [];
+    const container = document.getElementById('rules-container');
+    const div = document.createElement('div');
+    div.className = 'rule-row';
 
-            try {
-                const res = await fetch('/api/v1/governance/protect', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ connection_id: activeConnectionId, tabla, reglas })
-                });
-                const data = await res.json();
-                if (res.ok) {
-                    statusEl.innerText = `[OK] ${data.filas_protegidas} filas protegidas. Backup: ${data.backup_tabla || data.shadow_collection}`;
-                    statusEl.className = "text-xs mt-3 text-center text-emerald-400";
-                    actualizarBadgeEstado(tabla);
-                } else {
-                    statusEl.innerText = `[ERROR] ${data.detail}`;
-                    statusEl.className = "text-xs mt-3 text-center text-rose-400";
-                }
-            } catch(e) {
-                statusEl.innerText = "[ERROR] Error de conexion con API.";
-            } finally {
-                btn.innerText = "Proteger BD (SDM)";
-                btn.disabled = false;
+    let colsHtml = '<select class="rule-col flex-1 input-field text-xs py-1.5">';
+    columnas.forEach(c => colsHtml += `<option value="${c}">${c}</option>`);
+    colsHtml += '</select>';
+
+    div.innerHTML = `
+        ${colsHtml}
+        <select class="rule-algo flex-1 input-field text-xs py-1.5">
+            <option value="redaccion">Redacción (X)</option>
+            <option value="hashing">Hashing SHA-256</option>
+            <option value="encriptacion">Fernet AES</option>
+            <option value="fpe">FPE (Pesado)</option>
+        </select>
+        <button onclick="this.parentElement.remove()" class="text-slate-600 hover:text-rose-400 transition-colors px-1 flex-shrink-0">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+    `;
+    container.appendChild(div);
+}
+
+function _getReglasActuales() {
+    const tabla = document.getElementById('rule-table').value;
+    const reglas = {};
+    document.querySelectorAll('.rule-row').forEach(row => {
+        const col = row.querySelector('.rule-col')?.value;
+        const algo = row.querySelector('.rule-algo')?.value;
+        if (col) reglas[col] = algo;
+    });
+    return { tabla, reglas };
+}
+
+async function ejecutarPrueba() {
+    if (!activeConnectionId) { alert('Selecciona y activa una conexión primero.'); return; }
+    const tabla = document.getElementById('rule-table').value;
+    if (!tabla) { alert('Selecciona una tabla.'); return; }
+
+    const btn = document.getElementById('btn-execute');
+    const status = document.getElementById('execute-status');
+    btn.textContent = 'Procesando...';
+    btn.disabled = true;
+    status.textContent = '';
+
+    const reglas = {};
+    document.querySelectorAll('.rule-row').forEach(row => {
+        const col = row.querySelector('.rule-col')?.value;
+        const algo = row.querySelector('.rule-algo')?.value;
+        if (col) reglas[col] = algo;
+    });
+
+    try {
+        const res = await fetch('/api/v1/execute_test', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ connection_id: activeConnectionId, tabla, reglas })
+        });
+        if (res.status === 401) { window.location.href = '/login'; return; }
+        const data = await res.json();
+        if (res.ok) {
+            actualizarMetricas(data);
+            status.textContent = `${data.filas_procesadas} filas procesadas`;
+            status.className = 'text-xs text-center text-emerald-400';
+        } else {
+            status.textContent = data.detail;
+            status.className = 'text-xs text-center text-rose-400';
+        }
+    } catch(e) {
+        status.textContent = 'Error de conexión con API';
+        status.className = 'text-xs text-center text-rose-400';
+    } finally {
+        btn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> Ejecutar y Medir';
+        btn.disabled = false;
+    }
+}
+
+// ─── METRICS & CHARTS ─────────────────────────────────────────────────────────
+function actualizarMetricas(data) {
+    document.getElementById('kpi-db').textContent = `${data.tiempo_bd_ms} ms`;
+    document.getElementById('kpi-sec').textContent = `${data.tiempo_enmascarado_ms} ms`;
+    document.getElementById('kpi-total').textContent = `${data.overhead_total_ms} ms`;
+    document.getElementById('data-preview').textContent = JSON.stringify(data.data, null, 2);
+
+    lastMetrics = { db: data.tiempo_bd_ms, sec: data.tiempo_enmascarado_ms };
+    document.getElementById('stat-overhead').textContent = data.tiempo_enmascarado_ms + ' ms';
+    document.getElementById('stat-rules').textContent = Object.keys(_getReglasActuales().reglas).length;
+
+    myBarChart.data.datasets[0].data = [data.tiempo_bd_ms, data.tiempo_enmascarado_ms];
+    myBarChart.update();
+
+    const total = data.tiempo_bd_ms + data.tiempo_enmascarado_ms;
+    myPieChart.data.datasets[0].data = total > 0 ? [data.tiempo_bd_ms, data.tiempo_enmascarado_ms] : [1, 0];
+    myPieChart.update();
+}
+
+function initCharts() {
+    const barCtx = document.getElementById('latencyChart').getContext('2d');
+    myBarChart = new Chart(barCtx, {
+        type: 'bar',
+        data: {
+            labels: ['Tiempo DB Nativo', 'Overhead SecOps'],
+            datasets: [{
+                data: [0, 0],
+                backgroundColor: ['rgba(59,130,246,0.3)', 'rgba(245,158,11,0.3)'],
+                borderColor: ['#3b82f6', '#f59e0b'],
+                borderWidth: 2, borderRadius: 6, borderSkipped: false
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#475569', font: {family:'JetBrains Mono', size:11} } },
+                x: { grid: { display: false }, ticks: { color: '#475569', font: {size:11} } }
             }
         }
+    });
 
-        async function restaurarDatos() {
-            if (!activeConnectionId) { alert("Selecciona una conexion primero."); return; }
-            const tabla = document.getElementById("rule-table").value;
-            if (!tabla) { alert("Selecciona la tabla a restaurar."); return; }
-
-            const confirmado = confirm(
-                `Restaurar los datos originales de '${tabla}' desde el backup cifrado.\n\nEsto eliminara el backup y desactivara el modo Hardened.\n\n¿Confirmas la restauracion?`
-            );
-            if (!confirmado) return;
-
-            const btn = document.getElementById("btn-restore");
-            const statusEl = document.getElementById("governance-status");
-            btn.innerText = "Restaurando...";
-            btn.disabled = true;
-
-            try {
-                const res = await fetch('/api/v1/governance/restore', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ connection_id: activeConnectionId, tabla })
-                });
-                const data = await res.json();
-                if (res.ok) {
-                    statusEl.innerText = `[OK] ${data.filas_restauradas} filas restauradas exitosamente.`;
-                    statusEl.className = "text-xs mt-3 text-center text-blue-400";
-                    actualizarBadgeEstado(tabla);
-                } else {
-                    statusEl.innerText = `[ERROR] ${data.detail}`;
-                    statusEl.className = "text-xs mt-3 text-center text-rose-400";
-                }
-            } catch(e) {
-                statusEl.innerText = "[ERROR] Error de conexion con API.";
-            } finally {
-                btn.innerText = "Revertir a Originales";
-                btn.disabled = false;
-            }
+    const pieCtx = document.getElementById('pieChart').getContext('2d');
+    myPieChart = new Chart(pieCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Tiempo DB', 'Overhead Seguridad'],
+            datasets: [{
+                data: [1, 0],
+                backgroundColor: ['rgba(59,130,246,0.7)', 'rgba(245,158,11,0.7)'],
+                borderColor: ['#3b82f6', '#f59e0b'],
+                borderWidth: 2, hoverOffset: 6
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { color: '#64748b', font: {size:11}, padding:16 } } },
+            cutout: '65%'
         }
-    </script>
+    });
+}
+
+// ─── GOVERNANCE SDM ───────────────────────────────────────────────────────────
+async function actualizarBadgeEstado(tabla) {
+    if (!activeConnectionId || !tabla) return;
+    try {
+        const res = await fetch(`/api/v1/governance/status?connection_id=${activeConnectionId}&tabla=${tabla}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        sdmEstadoActual = data.estado;
+        const badge = document.getElementById('sdm-status-badge');
+        const sidebarBadge = document.getElementById('sdm-badge');
+        const topBadge = document.getElementById('sdm-badge-top');
+        const govPanel = document.getElementById('governance-panel');
+
+        if (data.estado === 'ACTIVA') {
+            badge.textContent = 'ACTIVA';
+            badge.className = 'px-3 py-1 rounded-full text-xs font-bold mono bg-amber-500/20 border border-amber-500/40 text-amber-400 badge-active';
+            sidebarBadge.classList.remove('hidden');
+            topBadge.classList.remove('hidden');
+            govPanel.classList.add('governance-hardened');
+            document.getElementById('stat-sdm').textContent = 'ACTIVO';
+            document.getElementById('stat-sdm').className = 'text-3xl font-bold text-amber-400 mt-3 mono';
+        } else {
+            badge.textContent = 'INACTIVA';
+            badge.className = 'px-3 py-1 rounded-full text-xs font-bold mono bg-slate-800 text-slate-500 border border-slate-700';
+            sidebarBadge.classList.add('hidden');
+            topBadge.classList.add('hidden');
+            govPanel.classList.remove('governance-hardened');
+            document.getElementById('stat-sdm').textContent = 'OK';
+            document.getElementById('stat-sdm').className = 'text-3xl font-bold text-emerald-400 mt-3 mono';
+        }
+    } catch(e) {}
+}
+
+async function activarProteccion() {
+    if (!activeConnectionId) { alert('Activa una conexión de BD primero.'); return; }
+    const { tabla, reglas } = _getReglasActuales();
+    if (!tabla) { alert('Selecciona una tabla en "Políticas de Enmascaramiento".'); return; }
+    if (!Object.keys(reglas).length) { alert('Define al menos una regla de enmascaramiento.'); return; }
+
+    if (!confirm(`ADVERTENCIA: Esta operación sobreescribirá los datos reales de la tabla '${tabla}' permanentemente.\n\nSe creará un backup cifrado con AES-256 (Fernet).\n\n¿Confirmas la activación del Static Data Masking?`)) return;
+
+    const btn = document.getElementById('btn-protect');
+    const statusEl = document.getElementById('governance-status');
+    btn.textContent = 'Protegiendo...';
+    btn.disabled = true;
+
+    try {
+        const res = await fetch('/api/v1/governance/protect', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ connection_id: activeConnectionId, tabla, reglas })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            statusEl.textContent = `[OK] ${data.filas_protegidas} filas protegidas. Backup: ${data.backup_tabla || data.shadow_collection}`;
+            statusEl.className = 'text-xs mt-3 text-center text-emerald-400';
+            actualizarBadgeEstado(tabla);
+        } else {
+            statusEl.textContent = `[ERROR] ${data.detail}`;
+            statusEl.className = 'text-xs mt-3 text-center text-rose-400';
+        }
+    } catch(e) {
+        statusEl.textContent = '[ERROR] Fallo al conectar con la API.';
+    } finally {
+        btn.textContent = 'Activar Protección SDM';
+        btn.disabled = false;
+    }
+}
+
+async function restaurarDatos() {
+    if (!activeConnectionId) { alert('Activa una conexión primero.'); return; }
+    const tabla = document.getElementById('rule-table').value;
+    if (!tabla) { alert('Selecciona una tabla en "Políticas de Enmascaramiento".'); return; }
+
+    if (!confirm(`Restaurar los datos originales de '${tabla}' desde el backup AES cifrado.\nEsto eliminará el backup y desactivará el modo Hardened.\n\n¿Confirmas?`)) return;
+
+    const btn = document.getElementById('btn-restore');
+    const statusEl = document.getElementById('governance-status');
+    btn.textContent = 'Restaurando...';
+    btn.disabled = true;
+
+    try {
+        const res = await fetch('/api/v1/governance/restore', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ connection_id: activeConnectionId, tabla })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            statusEl.textContent = `[OK] ${data.filas_restauradas} filas restauradas exitosamente.`;
+            statusEl.className = 'text-xs mt-3 text-center text-blue-400';
+            actualizarBadgeEstado(tabla);
+        } else {
+            statusEl.textContent = `[ERROR] ${data.detail}`;
+            statusEl.className = 'text-xs mt-3 text-center text-rose-400';
+        }
+    } catch(e) {
+        statusEl.textContent = '[ERROR] Fallo al conectar con la API.';
+    } finally {
+        btn.textContent = 'Revertir a Datos Originales';
+        btn.disabled = false;
+    }
+}
+
+async function logout() {
+    await fetch('/api/logout', { method: 'POST' });
+    window.location.href = '/login';
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+async function fetchMe() {
+    try {
+        const res = await fetch('/api/auth/me');
+        if (!res.ok) return;
+        const data = await res.json();
+        const nombre = data.username || 'Usuario';
+        const email  = data.email    || '';
+        const inicial = nombre.trim().charAt(0).toUpperCase();
+        document.getElementById('user-avatar').textContent = inicial;
+        document.getElementById('user-name').textContent   = nombre;
+        document.getElementById('user-email').textContent  = email;
+    } catch(e) { console.error('fetchMe error', e); }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    toggleFormFields();
+    initCharts();
+    fetchMe();
+    renderEngineGrid();
+    fetchConnections();
+
+    // Sync governance table label on tab change
+    document.getElementById('rule-table').addEventListener('change', () => {
+        const t = document.getElementById('rule-table').value;
+        document.getElementById('gov-current-table').textContent = t || '— Selecciona una tabla —';
+        if (t) actualizarBadgeEstado(t);
+    });
+
+    // Refresh connections every 30s
+    setInterval(fetchConnections, 30000);
+});
+</script>
 </body>
 </html>
