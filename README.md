@@ -41,7 +41,19 @@ Cuando escribas código para este proyecto, sigue estas reglas estrictas:
 
 ---
 
-## 🚀 Despliegue con Docker Compose
+## Despliegue en Render (sin Docker en tu PC)
+
+Si no puedes instalar Docker Desktop, usa **Render**. Construye el proyecto en la nube desde GitHub.
+
+Guia completa: **[RENDER-DEPLOY.md](./RENDER-DEPLOY.md)**
+
+Resumen:
+1. Sube el proyecto a GitHub
+2. Crea cuenta en [render.com](https://render.com)
+3. **New → Blueprint** → conecta el repo
+4. Abre la URL de `secops-api`
+
+---
 
 ### Requisitos
 - Docker Desktop (Windows/macOS) o Docker Engine + Compose Plugin (Linux)

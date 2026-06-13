@@ -1,0 +1,61 @@
+# SecOps Universal — Blueprint para Render
+# Render construye en la nube: NO necesitas Docker Desktop en tu PC.
+# Guia paso a paso: RENDER-DEPLOY.md
+
+services:
+  # ── 1. Monitor Service (arranca primero) ───────────────────────────
+  - type: web
+    name: secops-monitor
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerCommand: sh -c "uvicorn monitor_service:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /health
+    envVars:
+      - key: DATA_DIR
+        value: /app/data
+
+  # ── 2. Masking Service ─────────────────────────────────────────────
+  - type: web
+    name: secops-masking
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerCommand: sh -c "uvicorn masking_service:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /health
+    envVars:
+      - key: DATA_DIR
+        value: /app/data
+
+  # ── 3. API Gateway (panel web + login) ─────────────────────────────
+  - type: web
+    name: secops-api
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerCommand: sh -c "uvicorn main:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /health
+    envVars:
+      - key: DATA_DIR
+        value: /app/data
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ADMIN_EMAIL
+        value: admin@secops.local
+      - key: ADMIN_PASSWORD
+        value: Admin1234!
+      - key: ADMIN_NAME
+        value: Administrador SecOps
+      - key: MASKING_SERVICE_URL
+        fromService:
+          type: web
+          name: secops-masking
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: MONITOR_SERVICE_URL
+        fromService:
+          type: web
+          name: secops-monitor
+          envVarKey: RENDER_EXTERNAL_URL

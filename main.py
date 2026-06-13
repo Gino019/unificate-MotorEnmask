@@ -24,6 +24,8 @@ load_dotenv()
 MASKING_SERVICE_URL = os.getenv("MASKING_SERVICE_URL", "http://localhost:8001")
 MONITOR_SERVICE_URL = os.getenv("MONITOR_SERVICE_URL", "http://localhost:8002")
 MOTORES_SDM_DISPONIBLES = ["sqlite", "postgres", "sqlserver", "mongodb"]
+# Render sirve HTTPS; las cookies deben marcarse secure en produccion
+_COOKIE_SECURE = os.getenv("RENDER") == "true"
 
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
@@ -91,7 +93,7 @@ async def register(payload: Dict[str, Any] = Body(...)):
     # Auto-login tras registro exitoso
     token = crear_token_sesion(usuario["nombre"], usuario["correo"], "local")
     response = JSONResponse({"message": "Cuenta creada exitosamente.", "nombre": usuario["nombre"]})
-    response.set_cookie(key="session_token", value=token, httponly=True, samesite="lax")
+    response.set_cookie(key="session_token", value=token, httponly=True, samesite="lax", secure=_COOKIE_SECURE)
     return response
 
 
@@ -103,7 +105,7 @@ async def login(correo: str = Form(...), password: str = Form(...)):
 
     token = crear_token_sesion(usuario["nombre_completo"], usuario["correo"], usuario.get("proveedor","local"))
     response = JSONResponse({"message": "Login exitoso.", "nombre": usuario["nombre_completo"]})
-    response.set_cookie(key="session_token", value=token, httponly=True, samesite="lax")
+    response.set_cookie(key="session_token", value=token, httponly=True, samesite="lax", secure=_COOKIE_SECURE)
     return response
 
 
