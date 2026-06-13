@@ -6,10 +6,10 @@ Contiene:
 - Inicialización del esquema
 - Registro con hash bcrypt
 - Autenticación por email + password
-- Upsert para usuarios de Google OAuth2
 - Auto-creación del usuario administrador por defecto al primer arranque
 """
 
+import os
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -17,16 +17,18 @@ from typing import Optional, Dict, Any
 
 from passlib.context import CryptContext
 
+from config import settings
+
 # Motor de hash bcrypt — estándar de la industria para contraseñas
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Archivo SQLite exclusivo para la plataforma (separado de las BDs de los usuarios)
-PLATFORM_DB = "platform_users.db"
+PLATFORM_DB = os.path.join(settings.DATA_DIR, "platform_users.db")
 
-# Credenciales del administrador por defecto (primer arranque)
-ADMIN_EMAIL    = "admin@secops.local"
-ADMIN_PASSWORD = "Admin1234!"
-ADMIN_NAME     = "Administrador SecOps"
+# Credenciales del administrador por defecto (primer arranque; sobreescribibles vía .env)
+ADMIN_EMAIL    = os.getenv("ADMIN_EMAIL", "admin@secops.local")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Admin1234!")
+ADMIN_NAME     = os.getenv("ADMIN_NAME", "Administrador SecOps")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -69,18 +71,17 @@ def init_db():
 def registrar_usuario(
     nombre: str,
     correo: str,
-    password: Optional[str] = None,
-    proveedor: str = "local"
+    password: str,
+    proveedor: str = "local",
 ) -> Dict[str, Any]:
-    """
-    Inserta un nuevo usuario. Lanza ValueError si el correo ya existe.
-    Para usuarios de Google, password puede ser None.
-    """
+    """Inserta un nuevo usuario. Lanza ValueError si el correo ya existe."""
+    if not password:
+        raise ValueError("La contraseña es obligatoria.")
     if buscar_usuario_por_correo(correo):
         raise ValueError(f"El correo '{correo}' ya está registrado.")
 
     usuario_id = str(uuid.uuid4())
-    hash_pwd = pwd_context.hash(password) if password else None
+    hash_pwd = pwd_context.hash(password)
     fecha = datetime.now(timezone.utc).isoformat()
 
     with _get_conn() as conn:
@@ -104,7 +105,6 @@ def autenticar_usuario(correo: str, password: str) -> Optional[Dict[str, Any]]:
     if not usuario:
         return None
     if not usuario["password_hash"]:
-        # Usuario de Google — no tiene contraseña local
         return None
     if not pwd_context.verify(password, usuario["password_hash"]):
         return None
@@ -117,15 +117,3 @@ def buscar_usuario_por_correo(correo: str) -> Optional[sqlite3.Row]:
             "SELECT * FROM usuarios_plataforma WHERE correo = ?", (correo,)
         ).fetchone()
     return row
-
-
-def buscar_o_crear_usuario_google(nombre: str, correo: str) -> Dict[str, Any]:
-    """
-    Upsert para usuarios que entran vía Google OAuth2.
-    Si ya existe (de login previo con Google o local), retorna su registro.
-    Si es nuevo, lo crea con proveedor='google'.
-    """
-    usuario = buscar_usuario_por_correo(correo)
-    if usuario:
-        return dict(usuario)
-    return registrar_usuario(nombre, correo, password=None, proveedor="google")

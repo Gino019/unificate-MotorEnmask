@@ -1,11 +1,9 @@
 """
 main.py — SecOps Universal Monitor API v5.0
-Autenticación real: email + bcrypt, Google OAuth2.
+Autenticación: email + bcrypt (local).
 """
 
 import os
-import secrets
-import urllib.parse
 from typing import Any, Dict
 
 import httpx
@@ -19,25 +17,13 @@ from auth import (SESIONES_ACTIVAS, agregar_conexion, crear_token_sesion,
                   revocar_token)
 from config import settings
 from database_manager import DatabaseFactory
-from db_usuarios import (autenticar_usuario, buscar_o_crear_usuario_google,
-                         init_db, registrar_usuario)
+from db_usuarios import (autenticar_usuario, init_db, registrar_usuario)
 import time
 
+load_dotenv()
 MASKING_SERVICE_URL = os.getenv("MASKING_SERVICE_URL", "http://localhost:8001")
 MONITOR_SERVICE_URL = os.getenv("MONITOR_SERVICE_URL", "http://localhost:8002")
 MOTORES_SDM_DISPONIBLES = ["sqlite", "postgres", "sqlserver", "mongodb"]
-
-# ── Configuración ─────────────────────────────────────────────────────────────
-load_dotenv()
-GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-GOOGLE_REDIRECT_URI  = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/v1/auth/google/callback")
-GOOGLE_AUTH_URL      = "https://accounts.google.com/o/oauth2/v2/auth"
-GOOGLE_TOKEN_URL     = "https://oauth2.googleapis.com/token"
-GOOGLE_USERINFO_URL  = "https://www.googleapis.com/oauth2/v3/userinfo"
-
-# Estado temporal para anti-CSRF en OAuth2 (state param)
-_OAUTH_STATES: Dict[str, str] = {}  # {state_token: "pending"}
 
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
@@ -54,6 +40,11 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def startup_event():
     """Inicializa la BD de usuarios y crea el admin por defecto."""
     init_db()
+
+
+@app.get("/health", tags=["Health"])
+async def health():
+    return {"status": "ok", "service": "api"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -134,92 +125,6 @@ async def me(sesion: Dict[str, Any] = Depends(obtener_sesion_actual)):
         "email":    sesion.get("email"),
         "proveedor": sesion.get("proveedor"),
     }
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# AUTH — GOOGLE OAUTH2
-# ─────────────────────────────────────────────────────────────────────────────
-
-@app.get("/api/v1/auth/google/login", tags=["Auth / Google OAuth2"])
-async def google_login():
-    """
-    Redirige al usuario a la pantalla de consentimiento de Google.
-    Requiere GOOGLE_CLIENT_ID configurado en .env.
-    """
-    if not GOOGLE_CLIENT_ID or GOOGLE_CLIENT_ID == "PENDIENTE_CONFIGURAR":
-        raise HTTPException(
-            status_code=503,
-            detail="Google OAuth2 no está configurado. Añade GOOGLE_CLIENT_ID en el archivo .env."
-        )
-
-    state = secrets.token_urlsafe(16)
-    _OAUTH_STATES[state] = "pending"
-
-    params = urllib.parse.urlencode({
-        "client_id":     GOOGLE_CLIENT_ID,
-        "redirect_uri":  GOOGLE_REDIRECT_URI,
-        "response_type": "code",
-        "scope":         "openid email profile",
-        "state":         state,
-        "access_type":   "online",
-        "prompt":        "select_account",
-    })
-    return RedirectResponse(url=f"{GOOGLE_AUTH_URL}?{params}")
-
-
-@app.get("/api/v1/auth/google/callback", tags=["Auth / Google OAuth2"])
-async def google_callback(code: str, state: str, request: Request):
-    """
-    Google redirige aquí con ?code=...&state=...
-    Intercambiamos el code por un access_token y obtenemos el perfil del usuario.
-    """
-    # Anti-CSRF: verificar state
-    if state not in _OAUTH_STATES:
-        raise HTTPException(status_code=400, detail="OAuth state inválido o expirado.")
-    del _OAUTH_STATES[state]
-
-    # Intercambiar code por access_token
-    async with httpx.AsyncClient() as client:
-        token_res = await client.post(GOOGLE_TOKEN_URL, data={
-            "code":          code,
-            "client_id":     GOOGLE_CLIENT_ID,
-            "client_secret": GOOGLE_CLIENT_SECRET,
-            "redirect_uri":  GOOGLE_REDIRECT_URI,
-            "grant_type":    "authorization_code",
-        })
-        if token_res.status_code != 200:
-            raise HTTPException(status_code=502, detail=f"Error al obtener token de Google: {token_res.text}")
-
-        token_data = token_res.json()
-        access_token = token_data.get("access_token")
-
-        # Obtener perfil del usuario desde Google
-        user_res = await client.get(
-            GOOGLE_USERINFO_URL,
-            headers={"Authorization": f"Bearer {access_token}"}
-        )
-        if user_res.status_code != 200:
-            raise HTTPException(status_code=502, detail="No se pudo obtener el perfil de Google.")
-
-        user_info = user_res.json()
-
-    nombre = user_info.get("name", "Usuario Google")
-    correo = user_info.get("email", "")
-
-    if not correo:
-        raise HTTPException(status_code=400, detail="Google no proporcionó un correo electrónico.")
-
-    # Buscar o crear el usuario en nuestra BD
-    usuario = buscar_o_crear_usuario_google(nombre, correo)
-
-    token = crear_token_sesion(
-        usuario.get("nombre_completo") or usuario.get("nombre") or nombre,
-        correo,
-        "google"
-    )
-    response = RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
-    response.set_cookie(key="session_token", value=token, httponly=True, samesite="lax")
-    return response
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -1,28 +1,33 @@
-# Usamos una imagen oficial y ligera de Python
+# ─── Imagen base ──────────────────────────────────────────────────────────────
 FROM python:3.11-slim
 
-# Evitar escritura de .pyc y mantener stdout unbuffered
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+# Evitar escritura de .pyc y mantener stdout/stderr sin buffer
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
-# Instalamos dependencias a nivel de sistema que requieren algunos drivers (ej: psycopg2, pymssql)
-RUN apt-get update && apt-get install -y \
+# Dependencias del sistema necesarias para drivers de BD (pymssql, psycopg2)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     freetds-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiamos requerimientos e instalamos
+# Instalar dependencias Python
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install -r requirements.txt
 
-# Copiamos todo el código fuente y archivos estáticos
+# Copiar código fuente y archivos estáticos
 COPY . .
 
-# Exponemos el puerto de FastAPI
+# Directorio de datos persistentes (montado como volumen en producción)
+RUN mkdir -p /app/data
+
+# Puerto de FastAPI
 EXPOSE 8000
 
-# Iniciamos el servidor
+# Iniciar API Gateway por defecto (sobreescribible en docker-compose.yml)
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

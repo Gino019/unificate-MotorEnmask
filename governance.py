@@ -28,17 +28,18 @@ PRE-FLIGHT CHECK (todos los motores):
 
 import copy
 import datetime
+import os
+import sqlite3
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from config import settings
 from masking import aplicar_enmascaramiento, cifrar_valor, descifrar_valor
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ESTADO DE GOBERNANZA (en memoria)
 # ─────────────────────────────────────────────────────────────────────────────
 
-import sqlite3
-
-PLATFORM_DB = "platform_users.db"
+PLATFORM_DB = os.path.join(settings.DATA_DIR, "platform_users.db")
 BACKUP_SUFFIX = "__backup_enc"
 
 def _get_platform_conn():

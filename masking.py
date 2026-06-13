@@ -9,7 +9,9 @@ import os
 from cryptography.fernet import Fernet
 from typing import List, Dict, Any
 
-KEYFILE_PATH = ".keyfile"
+from config import settings
+
+KEYFILE_PATH = os.path.join(settings.DATA_DIR, ".keyfile")
 
 def _cargar_o_generar_clave() -> bytes:
     """

@@ -1,10 +1,14 @@
-from fastapi import FastAPI, HTTPException, Body
+import os
 import sqlite3
-from typing import Dict, Any, List
 from datetime import datetime, timezone
+from typing import Any, Dict, List
+
+from fastapi import Body, FastAPI, HTTPException
+
+from config import settings
 
 app = FastAPI(title="SecOps Monitor Service")
-DB_NAME = "monitor_metrics.db"
+DB_NAME = os.path.join(settings.DATA_DIR, "monitor_metrics.db")
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
@@ -24,6 +28,10 @@ def init_db():
     conn.close()
 
 init_db()
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "monitor"}
 
 def _get_conn():
     return sqlite3.connect(DB_NAME)

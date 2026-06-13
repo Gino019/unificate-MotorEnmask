@@ -8,6 +8,10 @@ from database_manager import DatabaseFactory
 
 app = FastAPI(title="SecOps Masking Service")
 
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "masking"}
+
 @app.post("/protect")
 async def protect(payload: Dict[str, Any] = Body(...)):
     motor_nombre = payload.get("motor_nombre")

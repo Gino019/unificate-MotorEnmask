@@ -1,0 +1,36 @@
+# Git
+.git
+.gitignore
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Datos sensibles (no copiar al contenedor — se montan como volumen)
+.env
+.keyfile
+platform_users.db
+monitor_metrics.db
+local_monitor.db
+data/
+
+# Logs y temporales
+*.log
+*.tmp
+*.bak
+
+# IDEs
+.vscode/
+.idea/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db

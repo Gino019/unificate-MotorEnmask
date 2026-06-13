@@ -13,7 +13,7 @@ from typing import Dict, Any
 #   "token_hex": {
 #       "username": "John Doe",
 #       "email": "john@example.com",
-#       "proveedor": "local" | "google",
+#       "proveedor": "local",
 #       "conexiones": { "uuid_conn": {...} }
 #   }
 # }

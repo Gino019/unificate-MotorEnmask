@@ -40,4 +40,64 @@ Cuando escribas código para este proyecto, sigue estas reglas estrictas:
 - **Idioma:** El código, variables y comentarios deben seguir buenas prácticas de la industria, pero los logs expuestos, la documentación y la interfaz de usuario deben estar en **Español**.
 
 ---
+
+## 🚀 Despliegue con Docker Compose
+
+### Requisitos
+- Docker Desktop (Windows/macOS) o Docker Engine + Compose Plugin (Linux)
+- Al menos **8 GB RAM** libres (SQL Server y Neo4j consumen memoria)
+
+### Pasos
+
+```bash
+# 1. Clonar el repositorio y entrar al directorio del proyecto
+cd "Multi-DB Masking & Performance Overhead Monitor"
+
+# 2. Crear el archivo de entorno a partir de la plantilla
+cp .env.example .env          # Linux/macOS
+copy .env.example .env          # Windows CMD
+Copy-Item .env.example .env     # Windows PowerShell
+
+# 3. Editar .env — cambiar SECRET_KEY, ADMIN_PASSWORD y contraseñas de BD
+#    Generar SECRET_KEY: python -c "import secrets; print(secrets.token_hex(32))"
+
+# 4. Levantar todo el stack
+docker compose up -d --build
+
+# 5. Verificar que los servicios estén sanos
+docker compose ps
+```
+
+### Acceso
+
+| Servicio | URL |
+|---|---|
+| **Panel web (login local)** | http://localhost:8000/login |
+| API Gateway | http://localhost:8000 |
+| Masking Service | http://localhost:8001 |
+| Monitor Service | http://localhost:8002 |
+| Neo4j Browser | http://localhost:7474 |
+
+**Credenciales por defecto** (configurables en `.env`):
+- Email: `admin@secops.local`
+- Contraseña: `Admin1234!`
+
+### Autenticación
+El acceso es **solo con email + contraseña** (bcrypt). Los usuarios pueden registrarse desde `/login`.
+
+### Datos persistentes
+Los volúmenes Docker guardan:
+- `secops_data` → usuarios de plataforma + clave Fernet SDM
+- `monitor_data` → métricas de rendimiento
+- `pg_data`, `mysql_data`, `mssql_data`, `mongo_data`, `redis_data`, `neo4j_data` → bases de datos de prueba
+
+### Comandos útiles
+
+```bash
+docker compose logs -f api          # Ver logs del gateway
+docker compose down                 # Detener servicios
+docker compose down -v              # Detener y borrar volúmenes (¡pierde datos!)
+```
+
+---
 *Última actualización de contexto: Junio 2026*

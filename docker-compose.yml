@@ -1,136 +1,215 @@
 version: '3.8'
 
 services:
-  # ----------------------------------------
-  # 1. API GATEWAY
-  # ----------------------------------------
+  # ─────────────────────────────────────────────────────────
+  # 1. API GATEWAY  (puerto 8000)
+  # ─────────────────────────────────────────────────────────
   api:
     build: .
     container_name: secops_api
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
+      - DATA_DIR=/app/data
+      - SECRET_KEY=${SECRET_KEY:-cambia-esto-en-produccion}
+      - MASKING_SERVICE_URL=http://masking-service:8001
+      - MONITOR_SERVICE_URL=http://monitor-service:8002
       - PG_HOST=postgres_db
       - MYSQL_HOST=mysql_db
       - MSSQL_HOST=sqlserver_db
       - MONGO_URI=mongodb://mongodb_db:27017/
       - REDIS_HOST=redis_db
       - NEO4J_URI=bolt://neo4j_db:7687
-      - MASKING_SERVICE_URL=http://masking-service:8001
-      - MONITOR_SERVICE_URL=http://monitor-service:8002
     depends_on:
-      - postgres_db
-      - mysql_db
-      - sqlserver_db
-      - mongodb_db
-      - redis_db
-      - neo4j_db
-      - masking-service
-      - monitor-service
+      masking-service:
+        condition: service_healthy
+      monitor-service:
+        condition: service_healthy
+      postgres_db:
+        condition: service_healthy
+      mysql_db:
+        condition: service_healthy
+      mongodb_db:
+        condition: service_healthy
+      redis_db:
+        condition: service_healthy
     volumes:
-      - .:/app # Hot-reload para desarrollo
+      - secops_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
-  # ----------------------------------------
-  # 2. MASKING SERVICE
-  # ----------------------------------------
+  # ─────────────────────────────────────────────────────────
+  # 2. MASKING SERVICE  (puerto 8001)
+  # ─────────────────────────────────────────────────────────
   masking-service:
     build: .
     container_name: secops_masking
     command: uvicorn masking_service:app --host 0.0.0.0 --port 8001
     ports:
       - "8001:8001"
+    env_file:
+      - .env
     environment:
+      - DATA_DIR=/app/data
       - PG_HOST=postgres_db
       - MYSQL_HOST=mysql_db
       - MSSQL_HOST=sqlserver_db
       - MONGO_URI=mongodb://mongodb_db:27017/
       - REDIS_HOST=redis_db
       - NEO4J_URI=bolt://neo4j_db:7687
-    depends_on:
-      - postgres_db
-      - mysql_db
-      - sqlserver_db
-      - mongodb_db
-      - redis_db
-      - neo4j_db
     volumes:
-      - .:/app
+      - secops_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
-  # ----------------------------------------
-  # 3. MONITOR SERVICE
-  # ----------------------------------------
+  # ─────────────────────────────────────────────────────────
+  # 3. MONITOR SERVICE  (puerto 8002)
+  # ─────────────────────────────────────────────────────────
   monitor-service:
     build: .
     container_name: secops_monitor
     command: uvicorn monitor_service:app --host 0.0.0.0 --port 8002
     ports:
       - "8002:8002"
+    environment:
+      - DATA_DIR=/app/data
     volumes:
-      - .:/app
+      - monitor_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
-  # ----------------------------------------
+  # ─────────────────────────────────────────────────────────
   # 4. POSTGRESQL
-  # ----------------------------------------
+  # ─────────────────────────────────────────────────────────
   postgres_db:
-    image: postgres:15
+    image: postgres:15-alpine
     container_name: postgres_db
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
+      POSTGRES_USER: ${PG_USER:-postgres}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-postgres}
+      POSTGRES_DB: ${PG_DB:-postgres}
     ports:
       - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # ----------------------------------------
+  # ─────────────────────────────────────────────────────────
   # 5. MYSQL
-  # ----------------------------------------
+  # ─────────────────────────────────────────────────────────
   mysql_db:
     image: mysql:8
     container_name: mysql_db
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: mysql
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DB:-mysql}
     ports:
       - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # ----------------------------------------
-  # 6. SQL SERVER
-  # ----------------------------------------
+  # ─────────────────────────────────────────────────────────
+  # 6. SQL SERVER 2022
+  # ─────────────────────────────────────────────────────────
   sqlserver_db:
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: sqlserver_db
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "StrongPassword123!"
+      MSSQL_SA_PASSWORD: ${MSSQL_PASSWORD:-StrongPassword123!}
     ports:
       - "1433:1433"
+    volumes:
+      - mssql_data:/var/opt/mssql
+    restart: unless-stopped
 
-  # ----------------------------------------
+  # ─────────────────────────────────────────────────────────
   # 7. MONGODB
-  # ----------------------------------------
+  # ─────────────────────────────────────────────────────────
   mongodb_db:
-    image: mongo:latest
+    image: mongo:7-jammy
     container_name: mongodb_db
     ports:
       - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # ----------------------------------------
+  # ─────────────────────────────────────────────────────────
   # 8. REDIS
-  # ----------------------------------------
+  # ─────────────────────────────────────────────────────────
   redis_db:
-    image: redis:alpine
+    image: redis:7-alpine
     container_name: redis_db
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # ----------------------------------------
+  # ─────────────────────────────────────────────────────────
   # 9. NEO4J
-  # ----------------------------------------
+  # ─────────────────────────────────────────────────────────
   neo4j_db:
-    image: neo4j:latest
+    image: neo4j:5-community
     container_name: neo4j_db
     environment:
-      NEO4J_AUTH: neo4j/password
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-password}
     ports:
-      - "7474:7474" # Interfaz Browser Neo4j
-      - "7687:7687" # Protocolo Bolt para Python
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+    restart: unless-stopped
+
+# ─────────────────────────────────────────────────────────
+# VOLUMES PERSISTENTES
+# ─────────────────────────────────────────────────────────
+volumes:
+  secops_data:
+  monitor_data:
+  pg_data:
+  mysql_data:
+  mssql_data:
+  mongo_data:
+  redis_data:
+  neo4j_data:
