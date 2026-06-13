@@ -4,6 +4,7 @@ Autenticación: email + bcrypt (local).
 """
 
 import os
+import time
 from typing import Any, Dict
 
 import httpx
@@ -18,7 +19,6 @@ from auth import (SESIONES_ACTIVAS, agregar_conexion, crear_token_sesion,
 from config import settings
 from database_manager import DatabaseFactory
 from db_usuarios import (autenticar_usuario, init_db, registrar_usuario)
-import time
 
 load_dotenv()
 MASKING_SERVICE_URL = os.getenv("MASKING_SERVICE_URL", "http://localhost:8001")
@@ -35,18 +35,23 @@ app = FastAPI(
 )
 
 os.makedirs("static", exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Inicializa la BD de usuarios y crea el admin por defecto."""
-    init_db()
 
 
 @app.get("/health", tags=["Health"])
 async def health():
     return {"status": "ok", "service": "api"}
+
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Inicializa la BD de usuarios sin bloquear el health check de Render."""
+    try:
+        init_db()
+    except Exception as exc:
+        print(f"[STARTUP] init_db error (la app sigue arrancando): {exc}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
