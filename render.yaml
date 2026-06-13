@@ -1,44 +1,46 @@
 # SecOps Universal — Blueprint para Render
-# Render construye en la nube: NO necesitas Docker Desktop en tu PC.
-# Guia paso a paso: RENDER-DEPLOY.md
+# Guia: RENDER-DEPLOY.md
 
 services:
-  # ── 1. Monitor Service (arranca primero) ───────────────────────────
   - type: web
     name: secops-monitor
     runtime: docker
     plan: free
     region: oregon
     dockerfilePath: ./Dockerfile
-    dockerCommand: sh -c "uvicorn monitor_service:app --host 0.0.0.0 --port $PORT"
+    dockerCommand: render-start.sh
     healthCheckPath: /health
     envVars:
+      - key: UVICORN_APP
+        value: monitor_service:app
       - key: DATA_DIR
         value: /app/data
 
-  # ── 2. Masking Service ─────────────────────────────────────────────
   - type: web
     name: secops-masking
     runtime: docker
     plan: free
     region: oregon
     dockerfilePath: ./Dockerfile
-    dockerCommand: sh -c "uvicorn masking_service:app --host 0.0.0.0 --port $PORT"
+    dockerCommand: render-start.sh
     healthCheckPath: /health
     envVars:
+      - key: UVICORN_APP
+        value: masking_service:app
       - key: DATA_DIR
         value: /app/data
 
-  # ── 3. API Gateway (panel web + login) ─────────────────────────────
   - type: web
     name: secops-api
     runtime: docker
     plan: free
     region: oregon
     dockerfilePath: ./Dockerfile
-    dockerCommand: sh -c "uvicorn main:app --host 0.0.0.0 --port $PORT"
+    dockerCommand: render-start.sh
     healthCheckPath: /health
     envVars:
+      - key: UVICORN_APP
+        value: main:app
       - key: DATA_DIR
         value: /app/data
       - key: SECRET_KEY

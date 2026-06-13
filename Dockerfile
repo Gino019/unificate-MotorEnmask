@@ -1,7 +1,5 @@
-# ─── Imagen base ──────────────────────────────────────────────────────────────
 FROM python:3.11-slim
 
-# Evitar escritura de .pyc y mantener stdout/stderr sin buffer
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -9,25 +7,21 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Dependencias del sistema necesarias para drivers de BD (pymssql, psycopg2)
+# Librerias runtime (sin build-essential — evita OOM en Render free)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libpq-dev \
-    freetds-dev \
+    libpq5 \
+    freetds-common \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalar dependencias Python
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar código fuente y archivos estáticos
 COPY . .
-
-# Directorio de datos persistentes (montado como volumen en producción)
 RUN mkdir -p /app/data
 
-# Puerto de FastAPI
-EXPOSE 8000
+COPY scripts/render-start.sh /usr/local/bin/render-start.sh
+RUN chmod +x /usr/local/bin/render-start.sh
 
-# Iniciar API Gateway por defecto (sobreescribible en docker-compose.yml)
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 10000
+
+CMD ["render-start.sh"]
