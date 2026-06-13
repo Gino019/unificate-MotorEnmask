@@ -56,10 +56,47 @@ async def mask(payload: Dict[str, Any] = Body(...)):
         "tiempo_mask_ms": round(tiempo_mask_ms, 3)
     }
 
-@app.get("/status")
-async def status(connection_id: str, tabla: str):
+@app.post("/status")
+async def status(payload: Dict[str, Any] = Body(...)):
+    connection_id = payload.get("connection_id")
+    tabla = payload.get("tabla")
+    motor_nombre = payload.get("motor_nombre")
+    credenciales = payload.get("credenciales")
+    
     try:
         estado = obtener_estado(connection_id, tabla)
+        
+        # Auto-sanación: si figura INACTIVA pero la tabla de backup física existe,
+        # retornamos ACTIVA para habilitar el botón de restauración en el frontend.
+        if estado == "INACTIVA" and motor_nombre and credenciales:
+            try:
+                motor = DatabaseFactory.obtener_motor(motor_nombre, credenciales)
+                backup = tabla + "__backup_enc"
+                existe = False
+                
+                if motor_nombre == "sqlite":
+                    res = motor.ejecutar_consulta(
+                        f"SELECT name FROM sqlite_master WHERE type='table' AND name='{backup}'"
+                    )
+                    existe = len(res) > 0
+                elif motor_nombre == "postgres":
+                    res = motor.ejecutar_consulta(f"SELECT to_regclass('public.\"{backup}\"') AS existe")
+                    existe = len(res) > 0 and res[0].get("existe") is not None
+                elif motor_nombre == "sqlserver":
+                    res = motor.ejecutar_consulta(f"SELECT OBJECT_ID('{backup}', 'U') AS existe")
+                    existe = len(res) > 0 and res[0].get("existe") is not None
+                elif motor_nombre == "mongodb":
+                    cliente = motor.conectar()
+                    db_name = motor.credenciales.get("database")
+                    db = cliente[db_name]
+                    existe = backup in db.list_collection_names()
+                    cliente.close()
+                    
+                if existe:
+                    estado = "ACTIVA"
+            except Exception:
+                pass
+                
         return {"connection_id": connection_id, "tabla": tabla, "estado": estado}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

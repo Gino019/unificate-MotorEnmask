@@ -359,6 +359,7 @@ def _sqlserver_proteger(motor, tabla: str, reglas: Dict[str, str], connection_id
     # Descubrir tablas hijo con FK hacia [tabla]
     tablas_hijo = _sqlserver_get_fk_dependientes(cur, tabla)
 
+    success = False
     try:
         # ─ Deshabilitar FK constraints en tablas hijo ─────────────────────
         for hijo in tablas_hijo:
@@ -392,7 +393,14 @@ def _sqlserver_proteger(motor, tabla: str, reglas: Dict[str, str], connection_id
             )
 
         conn.commit()
+        success = True
 
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise e
     finally:
         # Deshabilitar IDENTITY_INSERT para la tabla original
         try:
@@ -406,10 +414,11 @@ def _sqlserver_proteger(motor, tabla: str, reglas: Dict[str, str], connection_id
                 cur.execute(f"ALTER TABLE [{hijo}] CHECK CONSTRAINT ALL")
             except Exception:
                 pass  # No queremos enmascarar el error original
-        try:
-            conn.commit()
-        except Exception:
-            pass
+        if success:
+            try:
+                conn.commit()
+            except Exception:
+                pass
         conn.close()
 
     _registrar_estado(connection_id, tabla, "ACTIVA")
@@ -454,6 +463,7 @@ def _sqlserver_restaurar(motor, tabla: str, connection_id: str) -> Dict[str, Any
     except Exception:
         pass
 
+    success = False
     try:
         # ─ Deshabilitar FK constraints en tablas hijo ─────────────────────
         for hijo in tablas_hijo:
@@ -482,7 +492,14 @@ def _sqlserver_restaurar(motor, tabla: str, connection_id: str) -> Dict[str, Any
             )
         cur.execute(f"DROP TABLE [{backup}]")
         conn.commit()
+        success = True
 
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise e
     finally:
         # Deshabilitar IDENTITY_INSERT para la tabla original
         try:
@@ -496,10 +513,11 @@ def _sqlserver_restaurar(motor, tabla: str, connection_id: str) -> Dict[str, Any
                 cur.execute(f"ALTER TABLE [{hijo}] CHECK CONSTRAINT ALL")
             except Exception:
                 pass
-        try:
-            conn.commit()
-        except Exception:
-            pass
+        if success:
+            try:
+                conn.commit()
+            except Exception:
+                pass
         conn.close()
 
     _registrar_estado(connection_id, tabla, "INACTIVA")

@@ -305,9 +305,11 @@ async def ejecutar_test(request: Request, payload: Dict[str, Any] = Body(...)):
         if resultados_db and reglas:
             async with httpx.AsyncClient() as client:
                 try:
+                    from fastapi.encoders import jsonable_encoder
+                    payload_json = jsonable_encoder({"datos": resultados_db, "reglas": reglas})
                     res = await client.post(
                         f"{MASKING_SERVICE_URL}/mask",
-                        json={"datos": resultados_db, "reglas": reglas},
+                        json=payload_json,
                         timeout=10.0
                     )
                     if res.status_code == 200:
@@ -437,13 +439,18 @@ async def revertir_proteccion(request: Request, payload: Dict[str, Any] = Body(.
 
 @app.get("/api/v1/governance/status", tags=["Gobernanza SDM"])
 async def estado_gobernanza(connection_id: str, tabla: str, request: Request):
-    obtener_conexion(request, connection_id)
+    config = obtener_conexion(request, connection_id)
 
     async with httpx.AsyncClient() as client:
         try:
-            res = await client.get(
+            res = await client.post(
                 f"{MASKING_SERVICE_URL}/status",
-                params={"connection_id": connection_id, "tabla": tabla},
+                json={
+                    "connection_id": connection_id,
+                    "tabla": tabla,
+                    "motor_nombre": config.get("motor"),
+                    "credenciales": config.get("credenciales")
+                },
                 timeout=5.0
             )
             if res.status_code == 200:
@@ -458,3 +465,4 @@ async def estado_gobernanza(connection_id: str, tabla: str, request: Request):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
