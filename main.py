@@ -21,9 +21,11 @@ from config import settings
 from database_manager import DatabaseFactory
 from db_usuarios import (autenticar_usuario, buscar_o_crear_usuario_google,
                          init_db, registrar_usuario)
-from governance import (obtener_estado, proteger_tabla, restaurar_tabla,
-                        MOTORES_SDM_DISPONIBLES)
-from monitor import monitor_overhead
+import time
+
+MASKING_SERVICE_URL = os.getenv("MASKING_SERVICE_URL", "http://localhost:8001")
+MONITOR_SERVICE_URL = os.getenv("MONITOR_SERVICE_URL", "http://localhost:8002")
+MOTORES_SDM_DISPONIBLES = ["sqlite", "postgres", "sqlserver", "mongodb"]
 
 # ── Configuración ─────────────────────────────────────────────────────────────
 load_dotenv()
@@ -290,7 +292,64 @@ async def ejecutar_test(request: Request, payload: Dict[str, Any] = Body(...)):
         kwargs_extra["tipo_comando"] = "get"; query = tabla
 
     try:
-        return monitor_overhead(motor_nombre, lambda: motor.ejecutar_consulta(query, **kwargs_extra), reglas)
+        # 1. Medir tiempo de consulta cruda en base de datos
+        inicio_db = time.perf_counter_ns()
+        resultados_db = motor.ejecutar_consulta(query, **kwargs_extra)
+        fin_db = time.perf_counter_ns()
+        tiempo_db_ms = (fin_db - inicio_db) / 1_000_000.0
+
+        tiempo_mask_ms = 0.0
+        data_final = resultados_db or []
+
+        # 2. Si hay reglas, delegar el enmascaramiento al Servicio de Masking
+        if resultados_db and reglas:
+            async with httpx.AsyncClient() as client:
+                try:
+                    res = await client.post(
+                        f"{MASKING_SERVICE_URL}/mask",
+                        json={"datos": resultados_db, "reglas": reglas},
+                        timeout=10.0
+                    )
+                    if res.status_code == 200:
+                        res_json = res.json()
+                        data_final = res_json.get("datos_enmascarados", [])
+                        tiempo_mask_ms = res_json.get("tiempo_mask_ms", 0.0)
+                    else:
+                        raise Exception(f"Error del servicio de masking: {res.text}")
+                except Exception as e:
+                    raise HTTPException(status_code=502, detail=f"Fallo comunicación con Masking Service: {str(e)}")
+
+        # 3. Enviar métricas al Monitor Service
+        overhead_total_ms = tiempo_db_ms + tiempo_mask_ms
+        metrics_payload = {
+            "motor_utilizado": motor_nombre,
+            "tiempo_bd_ms": round(tiempo_db_ms, 3),
+            "tiempo_mask_ms": round(tiempo_mask_ms, 3),
+            "overhead_total_ms": round(overhead_total_ms, 3),
+            "filas_procesadas": len(data_final)
+        }
+
+        async with httpx.AsyncClient() as client:
+            try:
+                await client.post(
+                    f"{MONITOR_SERVICE_URL}/metrics",
+                    json=metrics_payload,
+                    timeout=2.0
+                )
+            except Exception as e:
+                print(f"[GATEWAY] Advertencia: No se pudieron enviar métricas al Monitor Service: {e}")
+
+        # Formato de retorno exacto esperado por el frontend
+        return {
+            "motor_utilizado": motor_nombre,
+            "tiempo_bd_ms": round(tiempo_db_ms, 3),
+            "tiempo_enmascarado_ms": round(tiempo_mask_ms, 3),
+            "overhead_total_ms": round(overhead_total_ms, 3),
+            "filas_procesadas": len(data_final),
+            "data": data_final
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -317,14 +376,29 @@ async def activar_proteccion(request: Request, payload: Dict[str, Any] = Body(..
             detail=f"SDM no disponible para '{motor_nombre}'. Soportados: {', '.join(MOTORES_SDM_DISPONIBLES)}."
         )
 
-    motor = DatabaseFactory.obtener_motor(motor_nombre, config.get("credenciales"))
-    try:
-        resultado = proteger_tabla(motor_nombre, motor, tabla, reglas, connection_id)
-        return {"estado": "ACTIVA", "mensaje": f"SDM activado en '{tabla}'.", **resultado}
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.post(
+                f"{MASKING_SERVICE_URL}/protect",
+                json={
+                    "motor_nombre": motor_nombre,
+                    "credenciales": config.get("credenciales"),
+                    "tabla": tabla,
+                    "reglas": reglas,
+                    "connection_id": connection_id
+                },
+                timeout=30.0
+            )
+            if res.status_code == 200:
+                resultado = res.json()
+                return {"estado": "ACTIVA", "mensaje": f"SDM activado en '{tabla}'.", **resultado}
+            elif res.status_code == 409:
+                raise HTTPException(status_code=409, detail=res.json().get("detail", "Conflicto en pre-flight"))
+            else:
+                detail_msg = res.json().get("detail", res.text) if res.headers.get("content-type") == "application/json" else res.text
+                raise HTTPException(status_code=res.status_code, detail=detail_msg)
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=502, detail=f"Fallo comunicación con Masking Service: {str(e)}")
 
 
 @app.post("/api/v1/governance/restore", tags=["Gobernanza SDM"])
@@ -335,20 +409,50 @@ async def revertir_proteccion(request: Request, payload: Dict[str, Any] = Body(.
         raise HTTPException(status_code=400, detail="Faltan connection_id y/o tabla.")
 
     config = obtener_conexion(request, connection_id)
-    motor = DatabaseFactory.obtener_motor(config.get("motor"), config.get("credenciales"))
-    try:
-        resultado = restaurar_tabla(config.get("motor"), motor, tabla, connection_id)
-        return {"estado": "INACTIVA", "mensaje": f"Datos restaurados en '{tabla}'.", **resultado}
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    motor_nombre = config.get("motor")
+
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.post(
+                f"{MASKING_SERVICE_URL}/restore",
+                json={
+                    "motor_nombre": motor_nombre,
+                    "credenciales": config.get("credenciales"),
+                    "tabla": tabla,
+                    "connection_id": connection_id
+                },
+                timeout=30.0
+            )
+            if res.status_code == 200:
+                resultado = res.json()
+                return {"estado": "INACTIVA", "mensaje": f"Datos restaurados en '{tabla}'.", **resultado}
+            elif res.status_code == 409:
+                raise HTTPException(status_code=409, detail=res.json().get("detail", "Conflicto en restauración"))
+            else:
+                detail_msg = res.json().get("detail", res.text) if res.headers.get("content-type") == "application/json" else res.text
+                raise HTTPException(status_code=res.status_code, detail=detail_msg)
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=502, detail=f"Fallo comunicación con Masking Service: {str(e)}")
 
 
 @app.get("/api/v1/governance/status", tags=["Gobernanza SDM"])
 async def estado_gobernanza(connection_id: str, tabla: str, request: Request):
     obtener_conexion(request, connection_id)
-    return {"connection_id": connection_id, "tabla": tabla, "estado": obtener_estado(connection_id, tabla)}
+
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.get(
+                f"{MASKING_SERVICE_URL}/status",
+                params={"connection_id": connection_id, "tabla": tabla},
+                timeout=5.0
+            )
+            if res.status_code == 200:
+                return res.json()
+            else:
+                detail_msg = res.json().get("detail", res.text) if res.headers.get("content-type") == "application/json" else res.text
+                raise HTTPException(status_code=res.status_code, detail=detail_msg)
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=502, detail=f"Fallo comunicación con Masking Service: {str(e)}")
 
 
 if __name__ == "__main__":

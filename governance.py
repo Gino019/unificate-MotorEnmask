@@ -36,17 +36,58 @@ from masking import aplicar_enmascaramiento, cifrar_valor, descifrar_valor
 # ESTADO DE GOBERNANZA (en memoria)
 # ─────────────────────────────────────────────────────────────────────────────
 
-# {connection_id: {tabla: "ACTIVA" | "INACTIVA"}}
-ESTADO_GOBERNANZA: Dict[str, Dict[str, str]] = {}
+import sqlite3
+
+PLATFORM_DB = "platform_users.db"
 BACKUP_SUFFIX = "__backup_enc"
+
+def _get_platform_conn():
+    conn = sqlite3.connect(PLATFORM_DB)
+    return conn
+
+# Crear la tabla de gobernanza si no existe al arrancar
+def init_governance_db():
+    try:
+        with _get_platform_conn() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS gobernanza_estado (
+                    connection_id TEXT,
+                    tabla         TEXT,
+                    estado        TEXT NOT NULL,
+                    PRIMARY KEY (connection_id, tabla)
+                )
+            """)
+            conn.commit()
+    except Exception:
+        pass
+
+init_governance_db()
 
 
 def _registrar_estado(connection_id: str, tabla: str, estado: str) -> None:
-    ESTADO_GOBERNANZA.setdefault(connection_id, {})[tabla] = estado
+    try:
+        with _get_platform_conn() as conn:
+            conn.execute("""
+                INSERT INTO gobernanza_estado (connection_id, tabla, estado)
+                VALUES (?, ?, ?)
+                ON CONFLICT(connection_id, tabla) DO UPDATE SET estado=excluded.estado
+            """, (connection_id, tabla, estado))
+            conn.commit()
+    except Exception:
+        pass
 
 
 def obtener_estado(connection_id: str, tabla: str) -> str:
-    return ESTADO_GOBERNANZA.get(connection_id, {}).get(tabla, "INACTIVA")
+    try:
+        with _get_platform_conn() as conn:
+            row = conn.execute("""
+                SELECT estado FROM gobernanza_estado WHERE connection_id = ? AND tabla = ?
+            """, (connection_id, tabla)).fetchone()
+            if row:
+                return row[0]
+    except Exception:
+        pass
+    return "INACTIVA"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
